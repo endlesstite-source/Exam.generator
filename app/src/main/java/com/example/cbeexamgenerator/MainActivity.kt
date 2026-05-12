@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.*
@@ -113,7 +115,7 @@ class MainActivity : AppCompatActivity() {
         loadAllSubjects()
     }
 
-    // ---------- Home Tab (Updated) ----------
+    // ---------- Home Tab ----------
     private fun createHomeTab(): View {
         val ctx = this
         val scroll = ScrollView(ctx).apply { setPadding(16, 16, 16, 16) }
