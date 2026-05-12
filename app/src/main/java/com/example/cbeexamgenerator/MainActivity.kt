@@ -3,6 +3,8 @@ package com.example.cbeexamgenerator
 import android.app.Dialog
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -82,7 +84,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Header
-        val header = LinearLayout(this).apply {
+        root.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
             setBackgroundColor(0xFF16A34A.toInt()); setPadding(16, 24, 16, 16)
             addView(TextView(context).apply {
@@ -93,9 +95,9 @@ class MainActivity : AppCompatActivity() {
                 text = "Competency Based Education Assessments"; textSize = 12f
                 setTextColor(0xFFDCFCE7.toInt()); setPadding(0, 4, 0, 0)
             })
-        }
-        root.addView(header)
+        })
 
+        // TabLayout
         val tabLayout = TabLayout(this).apply {
             tabGravity = TabLayout.GRAVITY_FILL; tabMode = TabLayout.MODE_SCROLLABLE
             setBackgroundColor(0xFFFFFFFF.toInt())
@@ -104,10 +106,10 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(tabLayout)
 
+        // ViewPager2
         viewPager = ViewPager2(this).apply {
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0, 1f
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
             )
             adapter = TabPagerAdapter()
         }
@@ -141,11 +143,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun input(hint: String, default: String = "", num: Boolean = false): EditText {
         return EditText(this).apply {
-            setHint(hint)
-            setText(default)
-            setTextColor(0xFF1E293B.toInt())
-            setBackgroundColor(0xFFFFFFFF.toInt())
-            setPadding(16, 12, 16, 12)
+            setHint(hint); setText(default); setTextColor(0xFF1E293B.toInt())
+            setBackgroundColor(0xFFFFFFFF.toInt()); setPadding(16, 12, 16, 12)
             if (num) inputType = android.text.InputType.TYPE_CLASS_NUMBER
         }
     }
@@ -163,35 +162,28 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         col1.addView(label(left.first)); col1.addView(left.second)
-
         val col2 = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             setPadding(16, 0, 0, 0)
         }
         col2.addView(label(right.first)); col2.addView(right.second)
-        this.addView(col1)
-        this.addView(col2)
+        this.addView(col1); this.addView(col2)
     }
 
     private fun button(text: String, color: Int) = Button(this).apply {
-        this.text = text
-        setBackgroundColor(color)
-        setTextColor(0xFFFFFFFF.toInt())
+        this.text = text; setBackgroundColor(color); setTextColor(0xFFFFFFFF.toInt())
         textSize = 14f
         layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { setMargins(0, 16, 0, 0) }
     }
 
     private fun statusView() = TextView(this).apply {
-        textAlignment = View.TEXT_ALIGNMENT_CENTER
-        textSize = 13f
-        setPadding(0, 12, 0, 0)
+        textAlignment = View.TEXT_ALIGNMENT_CENTER; textSize = 13f; setPadding(0, 12, 0, 0)
     }
 
-    // ---------- TABS ----------
+    // ---------- TAB ADAPTER ----------
     private inner class TabPagerAdapter : RecyclerView.Adapter<TabPagerAdapter.TabViewHolder>() {
 
         class TabViewHolder(val container: FrameLayout) : RecyclerView.ViewHolder(container)
@@ -210,15 +202,14 @@ class MainActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: TabViewHolder, position: Int) {
             holder.container.removeAllViews()
-            val view = when (position) {
+            holder.container.addView(when (position) {
                 0 -> createHomeTab()
                 1 -> createTopicalTab()
                 2 -> createHeadersTab()
                 3 -> createBulkTab()
                 4 -> createSavedTab()
                 else -> TextView(this@MainActivity)
-            }
-            holder.container.addView(view)
+            })
         }
     }
 
@@ -234,8 +225,7 @@ class MainActivity : AppCompatActivity() {
         val schoolName = input("Leave blank for standard header"); card.addView(schoolName)
 
         card.addView(label("Learning Area"))
-        val subjectSpinner = spinner(emptyList())
-        card.addView(subjectSpinner)
+        val subjectSpinner = spinner(emptyList()); card.addView(subjectSpinner)
 
         val gradeInput = input("e.g. 8", "8", true)
         card.addView(dualRow("Grade" to gradeInput, "Learning Area" to subjectSpinner))
@@ -303,9 +293,7 @@ class MainActivity : AppCompatActivity() {
             performGeneration(request, status, subj.displayName())
         }
 
-        // Fill spinners once subjects are loaded
-        post { updateSpinnerData(subjectSpinner) }
-
+        Handler(Looper.getMainLooper()).postDelayed({ updateSpinnerData(subjectSpinner) }, 800)
         scroll.addView(card)
         return scroll
     }
@@ -372,7 +360,7 @@ class MainActivity : AppCompatActivity() {
             performGeneration(request, status, "Topical: ${subj.displayName()}")
         }
 
-        post { updateSpinnerData(subjectSpinner) }
+        Handler(Looper.getMainLooper()).postDelayed({ updateSpinnerData(subjectSpinner) }, 800)
         scroll.addView(card)
         return scroll
     }
@@ -475,20 +463,18 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- SAVED TAB ----------
     private fun createSavedTab(): View {
-        val recyclerView = RecyclerView(this).apply {
+        val rv = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = SavedAdapter(savedPapers) { paper, action ->
                 when (action) {
                     "view" -> showExamDialog(paper.paper, paper.marking ?: "")
                     "delete" -> {
-                        savedPapers.remove(paper)
-                        savePapers()
-                        adapter?.notifyDataSetChanged()
+                        savedPapers.remove(paper); savePapers(); adapter?.notifyDataSetChanged()
                     }
                 }
             }
         }
-        return recyclerView
+        return rv
     }
 
     // ---------- GENERATION & DIALOG ----------
@@ -538,24 +524,20 @@ class MainActivity : AppCompatActivity() {
 
         val webView = WebView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
             )
-            settings.javaScriptEnabled = true
-            webViewClient = WebViewClient()
+            settings.javaScriptEnabled = true; webViewClient = WebViewClient()
         }
         root.addView(webView)
         dialog.setContentView(root)
 
         examBtn.setOnClickListener {
             webView.loadDataWithBaseURL(null, paper, "text/html", "UTF-8", null)
-            examBtn.setBackgroundColor(0xFF16A34A.toInt())
-            markBtn.setBackgroundColor(0xFF64748B.toInt())
+            examBtn.setBackgroundColor(0xFF16A34A.toInt()); markBtn.setBackgroundColor(0xFF64748B.toInt())
         }
         markBtn.setOnClickListener {
             webView.loadDataWithBaseURL(null, marking, "text/html", "UTF-8", null)
-            markBtn.setBackgroundColor(0xFF2563EB.toInt())
-            examBtn.setBackgroundColor(0xFF64748B.toInt())
+            markBtn.setBackgroundColor(0xFF2563EB.toInt()); examBtn.setBackgroundColor(0xFF64748B.toInt())
         }
         webView.loadDataWithBaseURL(null, paper, "text/html", "UTF-8", null)
         dialog.show()
@@ -588,10 +570,6 @@ class MainActivity : AppCompatActivity() {
         spinner.adapter = adapter
     }
 
-    private fun post(action: () -> Unit) {
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(action, 800)
-    }
-
     // ---------- SAVED ADAPTER ----------
     inner class SavedAdapter(
         private val list: List<SavedPaper>,
@@ -602,9 +580,7 @@ class MainActivity : AppCompatActivity() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
             val row = LinearLayout(parent.context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(16, 12, 16, 12)
-                gravity = Gravity.CENTER_VERTICAL
+                orientation = LinearLayout.HORIZONTAL; setPadding(16, 12, 16, 12); gravity = Gravity.CENTER_VERTICAL
             }
             val info = LinearLayout(parent.context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -616,16 +592,13 @@ class MainActivity : AppCompatActivity() {
             val date = TextView(parent.context).apply {
                 textSize = 12f; setTextColor(0xFF666666.toInt())
             }
-            info.addView(title); info.addView(date)
-            row.addView(info)
+            info.addView(title); info.addView(date); row.addView(info)
 
             row.addView(Button(parent.context).apply {
-                text = "View"; setBackgroundColor(0xFF16A34A.toInt())
-                setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
+                text = "View"; setBackgroundColor(0xFF16A34A.toInt()); setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
             })
             row.addView(Button(parent.context).apply {
-                text = "Del"; setBackgroundColor(0xFFEF4444.toInt())
-                setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
+                text = "Del"; setBackgroundColor(0xFFEF4444.toInt()); setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
             })
             return ViewHolder(row)
         }
