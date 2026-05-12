@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -96,10 +98,7 @@ class MainActivity : AppCompatActivity() {
     private fun createMainLayout(): LinearLayout {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
         }
         root.addView(createHeader())
         val tabLayout = TabLayout(this).apply {
@@ -108,10 +107,7 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(tabLayout)
         viewPager = ViewPager2(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0, 1f
-            )
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
             adapter = TabPagerAdapter()
         }
         root.addView(viewPager)
@@ -426,7 +422,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createSavedView(): RecyclerView {
-        val recyclerView = RecyclerView(this).apply { layoutManager = LinearLayoutManager(context) }
+        val recyclerView = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@MainActivity) }
         recyclerView.adapter = SavedAdapter(savedPapers) { paper, action ->
             when(action) {
                 "view" -> showExamDialog(paper.paper, paper.marking ?: "")
@@ -448,18 +444,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createSpinner(items: List<String>) = Spinner(this).apply {
-        adapter = ArrayAdapter(context, android.R.layout.simple_spinner_item, items)
+        adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, items)
             .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
     }
 
     private fun createDualRow(pair1: Pair<String, View>, pair2: Pair<String, View>): LinearLayout {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val col1 = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
         }
         col1.addView(createLabel(pair1.first)); col1.addView(pair1.second)
         val col2 = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
             setPadding(16,0,0,0)
         }
         col2.addView(createLabel(pair2.first)); col2.addView(pair2.second)
@@ -564,7 +560,7 @@ class MainActivity : AppCompatActivity() {
                     2 -> createHeadersView()
                     3 -> createBulkView()
                     4 -> createSavedView()
-                    else -> TextView(context).apply { text = "Unknown tab" }
+                    else -> TextView(this@MainActivity).apply { text = "Unknown tab" }
                 }
             )
         }
