@@ -1,6 +1,7 @@
 package com.example.cbeexamgenerator
 
 import android.app.Dialog
+import android.content.Context
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -9,6 +10,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
@@ -21,8 +24,9 @@ import retrofit2.http.*
 import java.text.SimpleDateFormat
 import java.util.*
 
+// ==================== DATA CLASSES ====================
 data class Subject(val id: Int, val name: String, val grade: Int) {
-    fun displayName() = name.replace(Regex(" Grade \\d+$"), "")
+    fun displayName(): String = name.replace(Regex(" Grade \\d+$"), "")
 }
 data class Topic(val id: Int, val name: String, val question_count: Int)
 data class GenerateRequest(
@@ -37,6 +41,7 @@ data class GenerateResponse(val exam_paper: String, val marking_scheme: String?,
 data class Question(val id: Int, val text: String)
 data class SavedPaper(val subject: String, val date: String, val paper: String, val marking: String?)
 
+// ==================== API ====================
 interface ApiService {
     @GET("subjects/") suspend fun getSubjects(): List<Subject>
     @GET("subjects/{id}/topics") suspend fun getTopics(@Path("id") id: Int): List<Topic>
@@ -53,6 +58,7 @@ object RetrofitClient {
     }
 }
 
+// ==================== MAIN ACTIVITY ====================
 class MainActivity : AppCompatActivity() {
 
     private lateinit var viewPager: ViewPager2
@@ -68,7 +74,10 @@ class MainActivity : AppCompatActivity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
             setBackgroundColor(0xFFF8FAFC.toInt())
         }
 
@@ -96,7 +105,10 @@ class MainActivity : AppCompatActivity() {
         root.addView(tabLayout)
 
         viewPager = ViewPager2(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0, 1f
+            )
             adapter = TabPagerAdapter()
         }
         root.addView(viewPager)
@@ -108,96 +120,129 @@ class MainActivity : AppCompatActivity() {
         loadSubjects()
     }
 
+    // ---------- LOAD SUBJECTS ----------
     private fun loadSubjects() {
         CoroutineScope(Dispatchers.Main).launch {
             try {
-                allSubjects = withContext(Dispatchers.IO) { RetrofitClient.api.getSubjects() }
-                    .sortedBy { it.displayName() }
+                allSubjects = withContext(Dispatchers.IO) {
+                    RetrofitClient.api.getSubjects()
+                }.sortedBy { it.displayName() }
             } catch (e: Exception) {
                 Toast.makeText(this@MainActivity, "Failed to load subjects", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    // ---------- HELPERS ----------
+    // ---------- UI HELPERS ----------
     private fun label(text: String) = TextView(this).apply {
         this.text = text; textSize = 12f; setTypeface(null, android.graphics.Typeface.BOLD)
         setTextColor(0xFF475569.toInt()); setPadding(0, 12, 0, 4)
     }
 
-    private fun input(hint: String, default: String = "", num: Boolean = false) = EditText(this).apply {
-        setHint(hint); setText(default); setTextColor(0xFF1E293B.toInt())
-        setBackgroundColor(0xFFFFFFFF.toInt()); setPadding(16, 12, 16, 12)
-        hintTextColor = 0xFF94A3B8.toInt()
-        if (num) inputType = android.text.InputType.TYPE_CLASS_NUMBER
+    private fun input(hint: String, default: String = "", num: Boolean = false): EditText {
+        return EditText(this).apply {
+            setHint(hint)
+            setText(default)
+            setTextColor(0xFF1E293B.toInt())
+            setBackgroundColor(0xFFFFFFFF.toInt())
+            setPadding(16, 12, 16, 12)
+            if (num) inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
     }
 
     private fun spinner(items: List<String>) = Spinner(this).apply {
-        adapter = ArrayAdapter(context, android.R.layout.simple_spinner_item, items)
+        adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, items)
             .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
         setBackgroundColor(0xFFF1F5F9.toInt())
     }
 
-    private fun dual(left: Pair<String, View>, right: Pair<String, View>) = LinearLayout(this).apply {
+    private fun dualRow(left: Pair<String, View>, right: Pair<String, View>) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
-            addView(label(left.first)); addView(left.second)
-        })
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
-            setPadding(16, 0, 0, 0); addView(label(right.first)); addView(right.second)
-        })
+        val col1 = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        col1.addView(label(left.first)); col1.addView(left.second)
+
+        val col2 = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setPadding(16, 0, 0, 0)
+        }
+        col2.addView(label(right.first)); col2.addView(right.second)
+        this.addView(col1)
+        this.addView(col2)
     }
 
     private fun button(text: String, color: Int) = Button(this).apply {
-        this.text = text; setBackgroundColor(color); setTextColor(0xFFFFFFFF.toInt())
-        textSize = 14f; layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { setMargins(0, 16, 0, 0) }
+        this.text = text
+        setBackgroundColor(color)
+        setTextColor(0xFFFFFFFF.toInt())
+        textSize = 14f
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { setMargins(0, 16, 0, 0) }
     }
 
-    private fun status() = TextView(this).apply {
-        textAlignment = View.TEXT_ALIGNMENT_CENTER; textSize = 13f; setPadding(0, 12, 0, 0)
+    private fun statusView() = TextView(this).apply {
+        textAlignment = View.TEXT_ALIGNMENT_CENTER
+        textSize = 13f
+        setPadding(0, 12, 0, 0)
     }
 
     // ---------- TABS ----------
-    private inner class TabPagerAdapter : RecyclerView.Adapter<TabPagerAdapter.VH>() {
+    private inner class TabPagerAdapter : RecyclerView.Adapter<TabPagerAdapter.TabViewHolder>() {
+
+        class TabViewHolder(val container: FrameLayout) : RecyclerView.ViewHolder(container)
+
         override fun getItemCount() = 5
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = VH(
-            FrameLayout(parent.context).apply { layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT) }
-        )
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            holder.container.removeAllViews()
-            holder.container.addView(when (position) {
-                0 -> homeTab()
-                1 -> topicalTab()
-                2 -> headersTab()
-                3 -> bulkTab()
-                4 -> savedTab()
-                else -> TextView(context)
-            })
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TabViewHolder {
+            val frame = FrameLayout(parent.context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+            return TabViewHolder(frame)
         }
-        inner class VH(val container: FrameLayout) : RecyclerView.ViewHolder(container)
+
+        override fun onBindViewHolder(holder: TabViewHolder, position: Int) {
+            holder.container.removeAllViews()
+            val view = when (position) {
+                0 -> createHomeTab()
+                1 -> createTopicalTab()
+                2 -> createHeadersTab()
+                3 -> createBulkTab()
+                4 -> createSavedTab()
+                else -> TextView(this@MainActivity)
+            }
+            holder.container.addView(view)
+        }
     }
 
-    private fun homeTab(): ScrollView {
+    // ---------- HOME TAB ----------
+    private fun createHomeTab(): View {
         val scroll = ScrollView(this).apply { setPadding(16, 16, 16, 16) }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt())
             setPadding(20, 20, 20, 20); elevation = 4f
         }
+
         card.addView(label("School Name (optional)"))
         val schoolName = input("Leave blank for standard header"); card.addView(schoolName)
 
         card.addView(label("Learning Area"))
-        val subjectSpinner = spinner(allSubjects.map { it.displayName() }.ifEmpty { listOf("Loading...") })
+        val subjectSpinner = spinner(emptyList())
         card.addView(subjectSpinner)
 
         val gradeInput = input("e.g. 8", "8", true)
-        card.addView(dual("Grade" to gradeInput, "Learning Area" to subjectSpinner))
+        card.addView(dualRow("Grade" to gradeInput, "Learning Area" to subjectSpinner))
 
         val termSpinner = spinner(listOf("1", "2", "3"))
         val typeSpinner = spinner(listOf("End Term", "Mid Term", "Opener", "CAT"))
-        card.addView(dual("Term" to termSpinner, "Type" to typeSpinner))
+        card.addView(dualRow("Term" to termSpinner, "Type" to typeSpinner))
 
         val catLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
         catLayout.addView(label("CAT Number"))
@@ -216,7 +261,7 @@ class MainActivity : AppCompatActivity() {
         card.addView(label("Total Marks"))
         val totalMarks = input("50", "50", true); card.addView(totalMarks)
 
-        card.addView(dual("Hours" to input("Hours", "1", true), "Minutes" to input("Minutes", "30", true)))
+        card.addView(dualRow("Hours" to input("Hours", "1", true), "Minutes" to input("Minutes", "30", true)))
 
         val checkRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 0) }
         val includeImages = CheckBox(this).apply { text = "Include Diagrams"; isChecked = true }
@@ -225,7 +270,8 @@ class MainActivity : AppCompatActivity() {
         card.addView(checkRow)
 
         val genBtn = button("Generate Paper", 0xFF16A34A.toInt())
-        val status = status(); card.addView(genBtn); card.addView(status)
+        val status = statusView()
+        card.addView(genBtn); card.addView(status)
 
         genBtn.setOnClickListener {
             val subjName = subjectSpinner.selectedItem as? String ?: ""
@@ -254,30 +300,35 @@ class MainActivity : AppCompatActivity() {
                 question_format = catFormatSelected, topic_ids = null, avoid_question_ids = emptyList()
             )
             status.text = "Generating..."
-            generate(request, status, subj.displayName())
+            performGeneration(request, status, subj.displayName())
         }
+
+        // Fill spinners once subjects are loaded
+        post { updateSpinnerData(subjectSpinner) }
+
         scroll.addView(card)
         return scroll
     }
 
-    private fun topicalTab(): ScrollView {
+    // ---------- TOPICAL TAB ----------
+    private fun createTopicalTab(): View {
         val scroll = ScrollView(this).apply { setPadding(16, 16, 16, 16) }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt())
             setPadding(20, 20, 20, 20); elevation = 4f
         }
+
         val schoolName = input("School Name (optional)"); card.addView(schoolName)
 
         card.addView(label("Learning Area"))
-        val subjectSpinner = spinner(allSubjects.map { it.displayName() }.ifEmpty { listOf("Loading...") })
-        card.addView(subjectSpinner)
+        val subjectSpinner = spinner(emptyList()); card.addView(subjectSpinner)
 
         val gradeInput = input("e.g. 8", "8", true)
-        card.addView(dual("Grade" to gradeInput, "Learning Area" to subjectSpinner))
+        card.addView(dualRow("Grade" to gradeInput, "Learning Area" to subjectSpinner))
 
         val termSpinner = spinner(listOf("1", "2", "3"))
         val totalMarks = input("50", "50", true)
-        card.addView(dual("Term" to termSpinner, "Total Marks" to totalMarks))
+        card.addView(dualRow("Term" to termSpinner, "Total Marks" to totalMarks))
 
         card.addView(label("Topics"))
         val topicsContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -287,14 +338,14 @@ class MainActivity : AppCompatActivity() {
         card.addView(includeImages)
 
         val genBtn = button("Generate Topical Test", 0xFF16A34A.toInt())
-        val status = status(); card.addView(genBtn); card.addView(status)
+        val status = statusView(); card.addView(genBtn); card.addView(status)
 
         subjectSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, v: View?, pos: Int, id: Long) {
                 val name = parent?.getItemAtPosition(pos) as? String ?: return
                 val subj = allSubjects.find { it.displayName() == name } ?: return
                 gradeInput.setText(subj.grade.toString())
-                loadTopics(subj.id, topicsContainer)
+                loadTopicsForContainer(subj.id, topicsContainer)
             }
             override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
@@ -318,13 +369,16 @@ class MainActivity : AppCompatActivity() {
                 question_format = "mixed", topic_ids = topicIds, avoid_question_ids = emptyList()
             )
             status.text = "Generating..."
-            generate(request, status, "Topical: ${subj.displayName()}")
+            performGeneration(request, status, "Topical: ${subj.displayName()}")
         }
+
+        post { updateSpinnerData(subjectSpinner) }
         scroll.addView(card)
         return scroll
     }
 
-    private fun headersTab(): ScrollView {
+    // ---------- HEADERS TAB ----------
+    private fun createHeadersTab(): View {
         val scroll = ScrollView(this).apply { setPadding(16, 16, 16, 16) }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt()); setPadding(20, 20, 20, 20)
@@ -345,15 +399,17 @@ class MainActivity : AppCompatActivity() {
         return scroll
     }
 
-    private fun bulkTab(): ScrollView {
+    // ---------- BULK TAB ----------
+    private fun createBulkTab(): View {
         val scroll = ScrollView(this).apply { setPadding(16, 16, 16, 16) }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt()); setPadding(20, 20, 20, 20)
         }
+
         val gradeInput = input("e.g. 8", "", true); card.addView(gradeInput)
         val termSpinner = spinner(listOf("1", "2", "3"))
         val typeSpinner = spinner(listOf("End Term", "Mid Term", "Opener", "CAT"))
-        card.addView(dual("Term" to termSpinner, "Type" to typeSpinner))
+        card.addView(dualRow("Term" to termSpinner, "Type" to typeSpinner))
 
         val catLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
         catLayout.addView(label("CAT Number"))
@@ -382,7 +438,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val genBtn = button("Generate All Papers", 0xFF7C3AED.toInt())
-        val status = status(); card.addView(genBtn); card.addView(status)
+        val status = statusView(); card.addView(genBtn); card.addView(status)
 
         genBtn.setOnClickListener {
             val selected = (0 until subjectsContainer.childCount).mapNotNull { i ->
@@ -417,31 +473,39 @@ class MainActivity : AppCompatActivity() {
         return scroll
     }
 
-    private fun savedTab(): RecyclerView {
-        val recyclerView = RecyclerView(this).apply { layoutManager = LinearLayoutManager(context) }
-        recyclerView.adapter = SavedAdapter(savedPapers) { paper, action ->
-            when (action) {
-                "view" -> showExamDialog(paper.paper, paper.marking ?: "")
-                "delete" -> {
-                    savedPapers.remove(paper); savePapers(); recyclerView.adapter?.notifyDataSetChanged()
+    // ---------- SAVED TAB ----------
+    private fun createSavedTab(): View {
+        val recyclerView = RecyclerView(this).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = SavedAdapter(savedPapers) { paper, action ->
+                when (action) {
+                    "view" -> showExamDialog(paper.paper, paper.marking ?: "")
+                    "delete" -> {
+                        savedPapers.remove(paper)
+                        savePapers()
+                        adapter?.notifyDataSetChanged()
+                    }
                 }
             }
         }
         return recyclerView
     }
 
-    private fun generate(request: GenerateRequest, status: TextView, label: String) {
+    // ---------- GENERATION & DIALOG ----------
+    private fun performGeneration(request: GenerateRequest, status: TextView, label: String) {
         CoroutineScope(Dispatchers.Main).launch {
             try {
                 val resp = withContext(Dispatchers.IO) { RetrofitClient.api.generateExam(request) }
                 showExamDialog(resp.exam_paper, resp.marking_scheme ?: "")
                 status.text = "Ready – ${resp.total_marks} marks"
                 savePaper(label, resp.exam_paper, resp.marking_scheme)
-            } catch (e: Exception) { status.text = "Error: ${e.message}" }
+            } catch (e: Exception) {
+                status.text = "Error: ${e.message}"
+            }
         }
     }
 
-    private fun loadTopics(subjectId: Int, container: LinearLayout) {
+    private fun loadTopicsForContainer(subjectId: Int, container: LinearLayout) {
         CoroutineScope(Dispatchers.Main).launch {
             container.removeAllViews()
             try {
@@ -462,71 +526,111 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val examBtn = Button(this).apply {
-            text = "Exam Paper"; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+            text = "Exam Paper"
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             setBackgroundColor(0xFF16A34A.toInt()); setTextColor(0xFFFFFFFF.toInt())
         }
-        val markBtn = Button(this).apply { text = "Marking Guide"; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f) }
+        val markBtn = Button(this).apply {
+            text = "Marking Guide"
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
         tabs.addView(examBtn); tabs.addView(markBtn); root.addView(tabs)
 
         val webView = WebView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-            settings.javaScriptEnabled = true; webViewClient = WebViewClient()
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            settings.javaScriptEnabled = true
+            webViewClient = WebViewClient()
         }
         root.addView(webView)
         dialog.setContentView(root)
 
         examBtn.setOnClickListener {
             webView.loadDataWithBaseURL(null, paper, "text/html", "UTF-8", null)
-            examBtn.setBackgroundColor(0xFF16A34A.toInt()); markBtn.setBackgroundColor(0xFF64748B.toInt())
+            examBtn.setBackgroundColor(0xFF16A34A.toInt())
+            markBtn.setBackgroundColor(0xFF64748B.toInt())
         }
         markBtn.setOnClickListener {
             webView.loadDataWithBaseURL(null, marking, "text/html", "UTF-8", null)
-            markBtn.setBackgroundColor(0xFF2563EB.toInt()); examBtn.setBackgroundColor(0xFF64748B.toInt())
+            markBtn.setBackgroundColor(0xFF2563EB.toInt())
+            examBtn.setBackgroundColor(0xFF64748B.toInt())
         }
         webView.loadDataWithBaseURL(null, paper, "text/html", "UTF-8", null)
         dialog.show()
     }
 
+    // ---------- PERSISTENCE ----------
     private fun loadSavedPapers() {
         val json = prefs.getString("papers", "[]") ?: "[]"
         savedPapers.clear()
         savedPapers.addAll(Gson().fromJson(json, object : TypeToken<List<SavedPaper>>() {}.type))
     }
 
-    private fun savePapers() { prefs.edit().putString("papers", Gson().toJson(savedPapers)).apply() }
+    private fun savePapers() {
+        prefs.edit().putString("papers", Gson().toJson(savedPapers)).apply()
+    }
 
     private fun savePaper(subject: String, paper: String, marking: String?) {
         val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
         savedPapers.add(0, SavedPaper(subject, date, paper, marking))
         if (savedPapers.size > 30) savedPapers.removeAt(savedPapers.size - 1)
-        savePapers(); viewPager.adapter?.notifyDataSetChanged()
+        savePapers()
+        viewPager.adapter?.notifyDataSetChanged()
     }
 
+    private fun updateSpinnerData(spinner: Spinner) {
+        val names = allSubjects.map { it.displayName() }
+        if (names.isEmpty()) return
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinner.adapter = adapter
+    }
+
+    private fun post(action: () -> Unit) {
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(action, 800)
+    }
+
+    // ---------- SAVED ADAPTER ----------
     inner class SavedAdapter(
         private val list: List<SavedPaper>,
         private val callback: (SavedPaper, String) -> Unit
-    ) : RecyclerView.Adapter<SavedAdapter.VH>() {
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+    ) : RecyclerView.Adapter<SavedAdapter.ViewHolder>() {
+
+        inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
             val row = LinearLayout(parent.context).apply {
-                orientation = LinearLayout.HORIZONTAL; setPadding(16, 12, 16, 12); gravity = Gravity.CENTER_VERTICAL
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(16, 12, 16, 12)
+                gravity = Gravity.CENTER_VERTICAL
             }
             val info = LinearLayout(parent.context).apply {
-                orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
-            val title = TextView(parent.context).apply { textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) }
-            val date = TextView(parent.context).apply { textSize = 12f; setTextColor(0xFF666666.toInt()) }
-            info.addView(title); info.addView(date); row.addView(info)
+            val title = TextView(parent.context).apply {
+                textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            val date = TextView(parent.context).apply {
+                textSize = 12f; setTextColor(0xFF666666.toInt())
+            }
+            info.addView(title); info.addView(date)
+            row.addView(info)
 
-            fun makeButton(label: String, color: Int) = Button(parent.context).apply {
-                text = label; setBackgroundColor(color); setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
-                layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { setMargins(4, 0, 4, 0) }
-            }
-            row.addView(makeButton("View", 0xFF16A34A.toInt()))
-            row.addView(makeButton("Del", 0xFFEF4444.toInt()))
-            return VH(row)
+            row.addView(Button(parent.context).apply {
+                text = "View"; setBackgroundColor(0xFF16A34A.toInt())
+                setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
+            })
+            row.addView(Button(parent.context).apply {
+                text = "Del"; setBackgroundColor(0xFFEF4444.toInt())
+                setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
+            })
+            return ViewHolder(row)
         }
 
-        override fun onBindViewHolder(holder: VH, position: Int) {
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val paper = list[position]
             val row = holder.itemView as LinearLayout
             val info = row.getChildAt(0) as LinearLayout
@@ -537,6 +641,5 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun getItemCount() = list.size
-        inner class VH(itemView: View) : RecyclerView.ViewHolder(itemView)
     }
 }
