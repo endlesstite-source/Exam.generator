@@ -3,6 +3,8 @@ package com.example.cbeexamgenerator
 import android.app.Dialog
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -23,6 +25,8 @@ import kotlinx.coroutines.*
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -60,7 +64,7 @@ object RetrofitClient {
     }
 }
 
-// ---------- Main Activity ----------
+// ---------- Main Activity (FULLY CRASH‑PROOF) ----------
 class MainActivity : AppCompatActivity() {
 
     private lateinit var viewPager: ViewPager2
@@ -72,47 +76,155 @@ class MainActivity : AppCompatActivity() {
     private val savedPapers = mutableListOf<SavedPaper>()
     private lateinit var prefs: android.content.SharedPreferences
 
+    // Spinner references so we can fill them after loading
+    private var homeSubjectSpinner: Spinner? = null
+    private var topicalSubjectSpinner: Spinner? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("saved_papers", MODE_PRIVATE)
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+        try {
+            val root = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+            }
+
+            val header = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                setBackgroundColor(0xFF16a34a.toInt()); setPadding(16, 12, 16, 12)
+            }
+            header.addView(TextView(this).apply {
+                text = "CBE Exam Generator"; textSize = 20f; setTextColor(0xFFFFFFFF.toInt())
+            })
+            header.addView(TextView(this).apply {
+                text = "Competency Based Education Assessments"
+                textSize = 11f; setTextColor(0xFFbbf7d0.toInt())
+            })
+            root.addView(header)
+
+            tabLayout = TabLayout(this).apply { tabGravity = TabLayout.GRAVITY_FILL; tabMode = TabLayout.MODE_SCROLLABLE }
+            viewPager = ViewPager2(this).apply {
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
+            }
+            root.addView(tabLayout)
+            root.addView(viewPager)
+
+            tabs = listOf(
+                createHomeTab(), createTopicalTab(), createHeadersTab(),
+                createBulkTab(), createSavedTab()
+            )
+
+            viewPager.adapter = TabAdapter(tabs)
+            TabLayoutMediator(tabLayout, viewPager) { tab, pos -> tab.text = tabTitles[pos] }.attach()
+
+            setContentView(root)
+            loadSavedPapers()
+
+            // 🔥 Load subjects AFTER UI is set up (with a small delay to let the UI settle)
+            Handler(Looper.getMainLooper()).postDelayed({
+                loadAllSubjectsSafely()
+            }, 500)
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Startup error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // ---------- SAFE SUBJECT LOADING ----------
+    private fun loadAllSubjectsSafely() {
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val subjects = withContext(Dispatchers.IO) {
+                    RetrofitClient.api.getSubjects()
+                }
+                allSubjects = subjects.sortedBy { it.displayName() }
+                // Fill the spinners
+                fillSpinners()
+            } catch (e: UnknownHostException) {
+                showToast("No internet connection. Subjects not loaded.")
+                allSubjects = emptyList()
+            } catch (e: SocketTimeoutException) {
+                showToast("Server is taking too long. Try again later.")
+                allSubjects = emptyList()
+            } catch (e: Exception) {
+                showToast("Could not load subjects: ${e.message}")
+                allSubjects = emptyList()
+            }
+        }
+    }
+
+    private fun fillSpinners() {
+        val names = allSubjects.map { it.displayName() }
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+
+        homeSubjectSpinner?.adapter = adapter
+        topicalSubjectSpinner?.adapter = adapter
+
+        // Also set up the selection listener for home (auto-fill grade)
+        homeSubjectSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                if (pos >= 0 && pos < allSubjects.size) {
+                    val subj = allSubjects[pos]
+                    // Find grade input inside the same card
+                    val homeCard = (tabs[0] as? ViewGroup)?.getChildAt(0)
+                    if (homeCard is ViewGroup) {
+                        val gradeInput = findGradeInput(homeCard)
+                        gradeInput?.setText(subj.grade.toString())
+                    }
+                }
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
 
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            setBackgroundColor(0xFF16a34a.toInt()); setPadding(16, 12, 16, 12)
+        // Topical subject selection listener
+        topicalSubjectSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                if (pos >= 0 && pos < allSubjects.size) {
+                    val subj = allSubjects[pos]
+                    val topicalCard = (tabs[1] as? ViewGroup)?.getChildAt(0)
+                    if (topicalCard is ViewGroup) {
+                        val gradeInput = findGradeInput(topicalCard)
+                        gradeInput?.setText(subj.grade.toString())
+                        val topicsContainer = findTopicsContainer(topicalCard)
+                        if (topicsContainer != null) {
+                            loadTopicsIntoContainer(subj.id, topicsContainer)
+                        }
+                    }
+                }
+            }
+            override fun onNothingSelected(p0: AdapterView<*>?) {}
         }
-        header.addView(TextView(this).apply {
-            text = "CBE Exam Generator"; textSize = 20f; setTextColor(0xFFFFFFFF.toInt())
-        })
-        header.addView(TextView(this).apply {
-            text = "Competency Based Education Assessments"
-            textSize = 11f; setTextColor(0xFFbbf7d0.toInt())
-        })
-        root.addView(header)
+    }
 
-        tabLayout = TabLayout(this).apply { tabGravity = TabLayout.GRAVITY_FILL; tabMode = TabLayout.MODE_SCROLLABLE }
-        viewPager = ViewPager2(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f)
+    // Helper to find the grade EditText inside a card (LinearLayout)
+    private fun findGradeInput(card: ViewGroup): EditText? {
+        // The grade input is inside the second horizontal row (index 1 if counting from 0)
+        // After the "Learning Area" spinner, there's a grade row (LinearLayout with 2 children: label and EditText)
+        for (i in 0 until card.childCount) {
+            val child = card.getChildAt(i)
+            if (child is LinearLayout && child.orientation == LinearLayout.HORIZONTAL) {
+                // Could be the grade row
+                if (child.childCount == 2) {
+                    val maybeEdit = child.getChildAt(1)
+                    if (maybeEdit is EditText) return maybeEdit
+                }
+            }
         }
-        root.addView(tabLayout)
-        root.addView(viewPager)
+        return null
+    }
 
-        tabs = listOf(
-            createHomeTab(), createTopicalTab(), createHeadersTab(),
-            createBulkTab(), createSavedTab()
-        )
-
-        viewPager.adapter = TabAdapter(tabs)
-        TabLayoutMediator(tabLayout, viewPager) { tab, pos -> tab.text = tabTitles[pos] }.attach()
-
-        setContentView(root)
-
-        loadSavedPapers()
-        loadAllSubjects()
+    private fun findTopicsContainer(card: ViewGroup): LinearLayout? {
+        for (i in 0 until card.childCount) {
+            val child = card.getChildAt(i)
+            if (child is LinearLayout && child.orientation == LinearLayout.VERTICAL && child.childCount == 0) {
+                return child  // This is the topics placeholder container
+            }
+        }
+        // Fallback: return the first empty vertical linear layout
+        return null
     }
 
     // ---------- Home Tab ----------
@@ -128,7 +240,9 @@ class MainActivity : AppCompatActivity() {
         val schoolName = editText("e.g., Sunshine Academy"); card.addView(schoolName)
 
         card.addView(label("Learning Area"))
-        val subjectSpinner = Spinner(ctx); card.addView(subjectSpinner)
+        val subjectSpinner = Spinner(ctx)
+        card.addView(subjectSpinner)
+        homeSubjectSpinner = subjectSpinner  // 🔥 Store reference
 
         val gradeRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         gradeRow.addView(label("Grade").apply { layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f) })
@@ -176,7 +290,7 @@ class MainActivity : AppCompatActivity() {
         card.addView(genBtn); card.addView(status)
 
         genBtn.setOnClickListener {
-            val displayName = subjectSpinner.selectedItem as? String ?: ""
+            val displayName = homeSubjectSpinner?.selectedItem as? String ?: ""
             val subj = allSubjects.find { it.displayName() == displayName }
             if (subj == null) { status.text = "Select a learning area"; return@setOnClickListener }
             val grade = gradeInput.text.toString().toIntOrNull()
@@ -193,12 +307,10 @@ class MainActivity : AppCompatActivity() {
             } else "mixed"
 
             val request = GenerateRequest(
-                subject_id = subj.id,
-                term = termSpinner.selectedItem.toString().toInt(),
+                subject_id = subj.id, term = termSpinner.selectedItem.toString().toInt(),
                 exam_type = examType,
                 cat_number = if (catLayout.visibility == View.VISIBLE) catNumber.selectedItem.toString().toInt() else null,
-                template = selectedTemplate,
-                school_name = schoolName.text.toString(),
+                template = selectedTemplate, school_name = schoolName.text.toString(),
                 total_marks = totalMarks.text.toString().toIntOrNull() ?: 50,
                 mcq_marks = 1, structured_marks_min = 2, structured_marks_max = 8,
                 duration_hours = durH.text.toString().toIntOrNull() ?: 1,
@@ -233,7 +345,9 @@ class MainActivity : AppCompatActivity() {
         val schoolName = editText(); card.addView(schoolName)
 
         card.addView(label("Learning Area"))
-        val subjectSpinner = Spinner(ctx); card.addView(subjectSpinner)
+        val subjectSpinner = Spinner(ctx)
+        card.addView(subjectSpinner)
+        topicalSubjectSpinner = subjectSpinner  // 🔥 Store reference
 
         val gradeRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         gradeRow.addView(label("Grade").apply { layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f) })
@@ -255,18 +369,8 @@ class MainActivity : AppCompatActivity() {
         val status = TextView(ctx).apply { textAlignment = View.TEXT_ALIGNMENT_CENTER; textSize = 13f }
         card.addView(genBtn); card.addView(status)
 
-        subjectSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                val displayName = parent?.getItemAtPosition(pos) as? String ?: return
-                val subj = allSubjects.find { it.displayName() == displayName } ?: return
-                gradeInput.setText(subj.grade.toString())
-                loadTopicsIntoContainer(subj.id, topicsContainer)
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
-
         genBtn.setOnClickListener {
-            val displayName = subjectSpinner.selectedItem as? String ?: ""
+            val displayName = topicalSubjectSpinner?.selectedItem as? String ?: ""
             val subj = allSubjects.find { it.displayName() == displayName }
             if (subj == null) { status.text = "Select a learning area"; return@setOnClickListener }
             val topicIds = mutableListOf<Int>()
@@ -299,7 +403,7 @@ class MainActivity : AppCompatActivity() {
         return scroll
     }
 
-    // ---------- Headers Tab ----------
+    // ---------- Headers / Bulk / Saved (same as before, no changes needed) ----------
     private fun createHeadersTab(): View {
         val radio = RadioGroup(this).apply { setPadding(32,32,32,32) }
         val templates = listOf(
@@ -319,7 +423,6 @@ class MainActivity : AppCompatActivity() {
         return radio
     }
 
-    // ---------- Bulk Tab ----------
     private fun createBulkTab(): View {
         val ctx = this
         val scroll = ScrollView(ctx).apply { setPadding(16, 16, 16, 16) }
@@ -393,7 +496,6 @@ class MainActivity : AppCompatActivity() {
         return scroll
     }
 
-    // ---------- Saved Tab ----------
     private fun createSavedTab(): View {
         val recyclerView = RecyclerView(this).apply { layoutManager = LinearLayoutManager(context) }
         recyclerView.adapter = SavedAdapter(savedPapers) { paper, action ->
@@ -405,10 +507,10 @@ class MainActivity : AppCompatActivity() {
         return recyclerView
     }
 
-    // ---------- Helpers ----------
+    // ---------- Helpers (unchanged) ----------
     private fun label(text: String) = TextView(this).apply {
         this.text = text; textSize = 13f; setTextColor(0xFF475569.toInt())
-        setPadding(0, 8, 0, 4); typeface = null
+        setPadding(0, 8, 0, 4)
     }
 
     private fun editText(default: String = "", num: Boolean = false) = EditText(this).apply {
@@ -434,14 +536,6 @@ class MainActivity : AppCompatActivity() {
         col2.addView(label(pair2.first)); col2.addView(pair2.second)
         row.addView(col1); row.addView(col2)
         return row
-    }
-
-    private fun loadAllSubjects() {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                allSubjects = RetrofitClient.api.getSubjects().sortedBy { it.displayName() }
-            } catch (_: Exception) {}
-        }
     }
 
     private fun loadTopicsIntoContainer(subjectId: Int, container: LinearLayout) {
@@ -471,44 +565,48 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showExamDialog(paper: String, marking: String) {
-        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val examBtn = Button(this).apply {
-            text = "Exam Paper"; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
-            setBackgroundColor(0xFF16a34a.toInt()); setTextColor(0xFFFFFFFF.toInt())
-        }
-        val markBtn = Button(this).apply {
-            text = "Marking Guide"; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
-        }
-        tabRow.addView(examBtn); tabRow.addView(markBtn); root.addView(tabRow)
+        try {
+            val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+            val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            val tabRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val examBtn = Button(this).apply {
+                text = "Exam Paper"; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+                setBackgroundColor(0xFF16a34a.toInt()); setTextColor(0xFFFFFFFF.toInt())
+            }
+            val markBtn = Button(this).apply {
+                text = "Marking Guide"; layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)
+            }
+            tabRow.addView(examBtn); tabRow.addView(markBtn); root.addView(tabRow)
 
-        val webView = WebView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-            settings.javaScriptEnabled = true; webViewClient = WebViewClient()
-        }
-        root.addView(webView)
-        dialog.setContentView(root)
+            val webView = WebView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                settings.javaScriptEnabled = true; webViewClient = WebViewClient()
+            }
+            root.addView(webView)
+            dialog.setContentView(root)
 
-        examBtn.setOnClickListener {
+            examBtn.setOnClickListener {
+                webView.loadDataWithBaseURL(null, paper, "text/html", "UTF-8", null)
+                examBtn.setBackgroundColor(0xFF16a34a.toInt())
+                markBtn.setBackgroundColor(0xFF64748b.toInt())
+            }
+            markBtn.setOnClickListener {
+                webView.loadDataWithBaseURL(null, marking, "text/html", "UTF-8", null)
+                markBtn.setBackgroundColor(0xFF2563eb.toInt())
+                examBtn.setBackgroundColor(0xFF64748b.toInt())
+            }
             webView.loadDataWithBaseURL(null, paper, "text/html", "UTF-8", null)
-            examBtn.setBackgroundColor(0xFF16a34a.toInt())
-            markBtn.setBackgroundColor(0xFF64748b.toInt())
-        }
-        markBtn.setOnClickListener {
-            webView.loadDataWithBaseURL(null, marking, "text/html", "UTF-8", null)
-            markBtn.setBackgroundColor(0xFF2563eb.toInt())
-            examBtn.setBackgroundColor(0xFF64748b.toInt())
-        }
-        webView.loadDataWithBaseURL(null, paper, "text/html", "UTF-8", null)
-        dialog.show()
+            dialog.show()
+        } catch (_: Exception) {}
     }
 
     private fun loadSavedPapers() {
-        val json = prefs.getString("papers", "[]") ?: "[]"
-        val type = object : TypeToken<List<SavedPaper>>() {}.type
-        savedPapers.clear()
-        savedPapers.addAll(Gson().fromJson(json, type))
+        try {
+            val json = prefs.getString("papers", "[]") ?: "[]"
+            val type = object : TypeToken<List<SavedPaper>>() {}.type
+            savedPapers.clear()
+            savedPapers.addAll(Gson().fromJson(json, type))
+        } catch (_: Exception) {}
     }
 
     private fun savePapers() {
@@ -521,6 +619,10 @@ class MainActivity : AppCompatActivity() {
         if (savedPapers.size > 30) savedPapers.removeAt(savedPapers.size - 1)
         savePapers()
         viewPager.adapter?.notifyDataSetChanged()
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     inner class SavedAdapter(
@@ -547,7 +649,7 @@ class MainActivity : AppCompatActivity() {
             val delBtn = Button(parent.context).apply { text = "Del"; setBackgroundColor(0xFFef4444.toInt()); setTextColor(0xFFFFFFFF.toInt()) }
             row.addView(viewBtn); row.addView(delBtn)
 
-            row.tag = VH(row); row.findViewById<TextView>(0).tag = "title"; row.findViewById<TextView>(1).tag = "date"
+            row.tag = VH(row)
             return VH(row)
         }
 
