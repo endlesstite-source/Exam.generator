@@ -1,610 +1,146 @@
 package com.example.cbeexamgenerator
 
-import android.app.Dialog
+import android.annotation.SuppressLint
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import androidx.viewpager2.widget.ViewPager2
-import com.google.android.material.tabs.TabLayout
-import com.google.android.material.tabs.TabLayoutMediator
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.*
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.*
-import java.text.SimpleDateFormat
-import java.util.*
 
-// ==================== DATA CLASSES ====================
-data class Subject(val id: Int, val name: String, val grade: Int) {
-    fun displayName(): String = name.replace(Regex(" Grade \\d+$"), "")
-}
-data class Topic(val id: Int, val name: String, val question_count: Int)
-data class GenerateRequest(
-    val subject_id: Int, val term: Int, val exam_type: String, val cat_number: Int?,
-    val template: String, val school_name: String, val total_marks: Int,
-    val mcq_marks: Int, val structured_marks_min: Int, val structured_marks_max: Int,
-    val duration_hours: Int, val duration_minutes: Int, val include_marking_scheme: Boolean,
-    val include_images: Boolean, val cross_grade: Boolean, val question_format: String,
-    val topic_ids: List<Int>?, val avoid_question_ids: List<Int>
-)
-data class GenerateResponse(val exam_paper: String, val marking_scheme: String?, val total_marks: Int, val questions: List<Question>)
-data class Question(val id: Int, val text: String)
-data class SavedPaper(val subject: String, val date: String, val paper: String, val marking: String?)
-
-// ==================== API ====================
-interface ApiService {
-    @GET("subjects/") suspend fun getSubjects(): List<Subject>
-    @GET("subjects/{id}/topics") suspend fun getTopics(@Path("id") id: Int): List<Topic>
-    @POST("generate-exam") suspend fun generateExam(@Body request: GenerateRequest): GenerateResponse
-}
-
-object RetrofitClient {
-    val api: ApiService by lazy {
-        Retrofit.Builder()
-            .baseUrl("https://exams-gen.onrender.com/")
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(ApiService::class.java)
-    }
-}
-
-// ==================== MAIN ACTIVITY ====================
 class MainActivity : AppCompatActivity() {
-
-    private lateinit var viewPager: ViewPager2
-    private val tabTitles = listOf("Home", "Topical", "Headers", "Bulk", "Saved")
-    private var allSubjects = listOf<Subject>()
-    private var selectedTemplate = "classic"
-    private val savedPapers = mutableListOf<SavedPaper>()
-    private lateinit var prefs: android.content.SharedPreferences
-
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        prefs = getSharedPreferences("saved_papers", MODE_PRIVATE)
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setBackgroundColor(0xFFF8FAFC.toInt())
-        }
-
-        // Header
-        root.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            setBackgroundColor(0xFF16A34A.toInt()); setPadding(16, 24, 16, 16)
-            addView(TextView(context).apply {
-                text = "CBE Exam Generator"; textSize = 22f; setTextColor(0xFFFFFFFF.toInt())
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            })
-            addView(TextView(context).apply {
-                text = "Competency Based Education Assessments"; textSize = 12f
-                setTextColor(0xFFDCFCE7.toInt()); setPadding(0, 4, 0, 0)
-            })
-        })
-
-        val tabLayout = TabLayout(this).apply {
-            tabGravity = TabLayout.GRAVITY_FILL; tabMode = TabLayout.MODE_SCROLLABLE
-            setBackgroundColor(0xFFFFFFFF.toInt())
-            setSelectedTabIndicatorColor(0xFF16A34A.toInt())
-            setTabTextColors(0xFF64748B.toInt(), 0xFF16A34A.toInt())
-        }
-        root.addView(tabLayout)
-
-        viewPager = ViewPager2(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
-            )
-            adapter = TabPagerAdapter()
-        }
-        root.addView(viewPager)
-
-        TabLayoutMediator(tabLayout, viewPager) { tab, pos -> tab.text = tabTitles[pos] }.attach()
-        setContentView(root)
-
-        loadSavedPapers()
-        loadSubjects()
-    }
-
-    // ---------- LOAD SUBJECTS ----------
-    private fun loadSubjects() {
-        CoroutineScope(Dispatchers.Main).launch {
-            try {
-                allSubjects = withContext(Dispatchers.IO) {
-                    RetrofitClient.api.getSubjects()
-                }.sortedBy { it.displayName() }
-            } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "Failed to load subjects", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    // ---------- UI HELPERS ----------
-    private fun label(text: String) = TextView(this).apply {
-        this.text = text; textSize = 12f; setTypeface(null, android.graphics.Typeface.BOLD)
-        setTextColor(0xFF475569.toInt()); setPadding(0, 12, 0, 4)
-    }
-
-    private fun input(hint: String, default: String = "", num: Boolean = false): EditText {
-        return EditText(this).apply {
-            setHint(hint); setText(default); setTextColor(0xFF1E293B.toInt())
-            setBackgroundColor(0xFFFFFFFF.toInt()); setPadding(16, 12, 16, 12)
-            if (num) inputType = android.text.InputType.TYPE_CLASS_NUMBER
-        }
-    }
-
-    private fun spinner(items: List<String>) = Spinner(this).apply {
-        adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, items)
-            .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-        setBackgroundColor(0xFFF1F5F9.toInt())
-    }
-
-    private fun dualRow(left: Pair<String, View>, right: Pair<String, View>) = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        val col1 = LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        col1.addView(label(left.first)); col1.addView(left.second)
-        val col2 = LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            setPadding(16, 0, 0, 0)
-        }
-        col2.addView(label(right.first)); col2.addView(right.second)
-        this.addView(col1); this.addView(col2)
-    }
-
-    private fun button(text: String, color: Int) = Button(this).apply {
-        this.text = text; setBackgroundColor(color); setTextColor(0xFFFFFFFF.toInt())
-        textSize = 14f
-        layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(0, 16, 0, 0) }
-    }
-
-    private fun statusView() = TextView(this).apply {
-        textAlignment = View.TEXT_ALIGNMENT_CENTER; textSize = 13f; setPadding(0, 12, 0, 0)
-    }
-
-    // ---------- TAB ADAPTER ----------
-    private inner class TabPagerAdapter : RecyclerView.Adapter<TabPagerAdapter.VH>() {
-        inner class VH(val container: FrameLayout) : RecyclerView.ViewHolder(container)
-        override fun getItemCount() = 5
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-            val frame = FrameLayout(parent.context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-            return VH(frame)
-        }
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            holder.container.removeAllViews()
-            holder.container.addView(when (position) {
-                0 -> createHomeTab()
-                1 -> createTopicalTab()
-                2 -> createHeadersTab()
-                3 -> createBulkTab()
-                4 -> createSavedTab()
-                else -> TextView(this@MainActivity)
-            })
-        }
-    }
-
-    // ---------- HOME TAB ----------
-    private fun createHomeTab(): View {
-        val scroll = ScrollView(this).apply { setPadding(16, 16, 16, 16) }
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt())
-            setPadding(20, 20, 20, 20); elevation = 4f
-        }
-
-        card.addView(label("School Name (optional)"))
-        val schoolName = input("Leave blank for standard header"); card.addView(schoolName)
-
-        card.addView(label("Learning Area"))
-        val subjectSpinner = spinner(emptyList()); card.addView(subjectSpinner)
-
-        val gradeInput = input("e.g. 8", "8", true)
-        card.addView(dualRow("Grade" to gradeInput, "Learning Area" to subjectSpinner))
-
-        val termSpinner = spinner(listOf("1", "2", "3"))
-        val typeSpinner = spinner(listOf("End Term", "Mid Term", "Opener", "CAT"))
-        card.addView(dualRow("Term" to termSpinner, "Type" to typeSpinner))
-
-        val catLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
-        catLayout.addView(label("CAT Number"))
-        val catNumber = spinner(listOf("1", "2", "3")); catLayout.addView(catNumber)
-        catLayout.addView(label("Question Format"))
-        val catFormat = spinner(listOf("Mixed", "MCQ Only", "Structured Only")); catLayout.addView(catFormat)
-        card.addView(catLayout)
-
-        typeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                catLayout.visibility = if (pos == 3) View.VISIBLE else View.GONE
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
-
-        card.addView(label("Total Marks"))
-        val totalMarks = input("50", "50", true); card.addView(totalMarks)
-
-        card.addView(dualRow("Hours" to input("Hours", "1", true), "Minutes" to input("Minutes", "30", true)))
-
-        val checkRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 0) }
-        val includeImages = CheckBox(this).apply { text = "Include Diagrams"; isChecked = true }
-        val crossGrade = CheckBox(this).apply { text = "Cross‑Grade Content"; isChecked = true }
-        checkRow.addView(includeImages); checkRow.addView(crossGrade)
-        card.addView(checkRow)
-
-        val genBtn = button("Generate Paper", 0xFF16A34A.toInt())
-        val status = statusView()
-        card.addView(genBtn); card.addView(status)
-
-        genBtn.setOnClickListener {
-            val subjName = subjectSpinner.selectedItem as? String ?: ""
-            val subj = allSubjects.find { it.displayName() == subjName }
-            if (subj == null) { status.text = "Select a learning area"; return@setOnClickListener }
-            val grade = gradeInput.text.toString().toIntOrNull()
-            if (grade == null || grade < 4 || grade > 9) { status.text = "Grade must be 4–9"; return@setOnClickListener }
-
-            val examType = typeSpinner.selectedItem.toString().lowercase().replace(" ", "_")
-            val catFormatSelected = if (catLayout.visibility == View.VISIBLE) {
-                when (catFormat.selectedItem.toString()) {
-                    "Mixed" -> "mixed"; "MCQ Only" -> "mcq_only"
-                    "Structured Only" -> "structured_only"; else -> "mixed"
-                }
-            } else "mixed"
-
-            val request = GenerateRequest(
-                subject_id = subj.id, term = termSpinner.selectedItem.toString().toInt(),
-                exam_type = examType,
-                cat_number = if (catLayout.visibility == View.VISIBLE) catNumber.selectedItem.toString().toInt() else null,
-                template = selectedTemplate, school_name = schoolName.text.toString(),
-                total_marks = totalMarks.text.toString().toIntOrNull() ?: 50,
-                mcq_marks = 1, structured_marks_min = 2, structured_marks_max = 8,
-                duration_hours = 1, duration_minutes = 30, include_marking_scheme = true,
-                include_images = includeImages.isChecked, cross_grade = crossGrade.isChecked,
-                question_format = catFormatSelected, topic_ids = null, avoid_question_ids = emptyList()
-            )
-            status.text = "Generating..."
-            performGeneration(request, status, subj.displayName())
-        }
-
-        Handler(Looper.getMainLooper()).postDelayed({ updateSpinnerData(subjectSpinner) }, 800)
-        scroll.addView(card)
-        return scroll
-    }
-
-    // ---------- TOPICAL TAB ----------
-    private fun createTopicalTab(): View {
-        val scroll = ScrollView(this).apply { setPadding(16, 16, 16, 16) }
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt())
-            setPadding(20, 20, 20, 20); elevation = 4f
-        }
-
-        val schoolName = input("School Name (optional)"); card.addView(schoolName)
-
-        card.addView(label("Learning Area"))
-        val subjectSpinner = spinner(emptyList()); card.addView(subjectSpinner)
-
-        val gradeInput = input("e.g. 8", "8", true)
-        card.addView(dualRow("Grade" to gradeInput, "Learning Area" to subjectSpinner))
-
-        val termSpinner = spinner(listOf("1", "2", "3"))
-        val totalMarks = input("50", "50", true)
-        card.addView(dualRow("Term" to termSpinner, "Total Marks" to totalMarks))
-
-        card.addView(label("Topics"))
-        val topicsContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        card.addView(topicsContainer)
-
-        val includeImages = CheckBox(this).apply { text = "Include Diagrams"; isChecked = true }
-        card.addView(includeImages)
-
-        val genBtn = button("Generate Topical Test", 0xFF16A34A.toInt())
-        val status = statusView(); card.addView(genBtn); card.addView(status)
-
-        subjectSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                val name = parent?.getItemAtPosition(pos) as? String ?: return
-                val subj = allSubjects.find { it.displayName() == name } ?: return
-                gradeInput.setText(subj.grade.toString())
-                loadTopicsForContainer(subj.id, topicsContainer)
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
-
-        genBtn.setOnClickListener {
-            val subjName = subjectSpinner.selectedItem as? String ?: ""
-            val subj = allSubjects.find { it.displayName() == subjName }
-            if (subj == null) { status.text = "Select a learning area"; return@setOnClickListener }
-            val topicIds = (0 until topicsContainer.childCount).mapNotNull { i ->
-                (topicsContainer.getChildAt(i) as? CheckBox)?.takeIf { it.isChecked }?.tag as? Int
-            }
-            if (topicIds.isEmpty()) { status.text = "Select at least one topic"; return@setOnClickListener }
-            val request = GenerateRequest(
-                subject_id = subj.id, term = termSpinner.selectedItem.toString().toInt(),
-                exam_type = "topical", cat_number = null, template = selectedTemplate,
-                school_name = schoolName.text.toString(),
-                total_marks = totalMarks.text.toString().toIntOrNull() ?: 50,
-                mcq_marks = 1, structured_marks_min = 2, structured_marks_max = 8,
-                duration_hours = 1, duration_minutes = 30, include_marking_scheme = true,
-                include_images = includeImages.isChecked, cross_grade = false,
-                question_format = "mixed", topic_ids = topicIds, avoid_question_ids = emptyList()
-            )
-            status.text = "Generating..."
-            performGeneration(request, status, "Topical: ${subj.displayName()}")
-        }
-
-        Handler(Looper.getMainLooper()).postDelayed({ updateSpinnerData(subjectSpinner) }, 800)
-        scroll.addView(card)
-        return scroll
-    }
-
-    // ---------- HEADERS TAB ----------
-    private fun createHeadersTab(): View {
-        val scroll = ScrollView(this).apply { setPadding(16, 16, 16, 16) }
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt()); setPadding(20, 20, 20, 20)
-        }
-        card.addView(label("Header Styles"))
-        val radio = RadioGroup(this)
-        listOf("Classic" to "classic", "Modern" to "modern", "Framed" to "framed",
-            "Minimal" to "minimal", "Assessment" to "assessment",
-            "Professional" to "professional", "Elegant" to "elegant")
-            .forEachIndexed { i, (name, value) ->
-                radio.addView(RadioButton(this).apply {
-                    text = name; id = i + 1; tag = value; if (i == 0) isChecked = true
-                })
-            }
-        radio.setOnCheckedChangeListener { _, id -> selectedTemplate = radio.findViewById<RadioButton>(id).tag as String }
-        card.addView(radio)
-        scroll.addView(card)
-        return scroll
-    }
-
-    // ---------- BULK TAB ----------
-    private fun createBulkTab(): View {
-        val scroll = ScrollView(this).apply { setPadding(16, 16, 16, 16) }
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFFFFFFFF.toInt()); setPadding(20, 20, 20, 20)
-        }
-
-        val gradeInput = input("e.g. 8", "", true); card.addView(gradeInput)
-        val termSpinner = spinner(listOf("1", "2", "3"))
-        val typeSpinner = spinner(listOf("End Term", "Mid Term", "Opener", "CAT"))
-        card.addView(dualRow("Term" to termSpinner, "Type" to typeSpinner))
-
-        val catLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
-        catLayout.addView(label("CAT Number"))
-        val catNumber = spinner(listOf("1", "2", "3")); catLayout.addView(catNumber)
-        card.addView(catLayout)
-
-        typeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                catLayout.visibility = if (pos == 3) View.VISIBLE else View.GONE
-            }
-            override fun onNothingSelected(p0: AdapterView<*>?) {}
-        }
-
-        card.addView(label("Learning Areas"))
-        val subjectsContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        card.addView(subjectsContainer)
-
-        gradeInput.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) {
-                val g = gradeInput.text.toString().toIntOrNull()
-                subjectsContainer.removeAllViews()
-                allSubjects.filter { it.grade == g }.forEach { subj ->
-                    subjectsContainer.addView(CheckBox(this).apply { text = subj.displayName() })
-                }
-            }
-        }
-
-        val genBtn = button("Generate All Papers", 0xFF7C3AED.toInt())
-        val status = statusView(); card.addView(genBtn); card.addView(status)
-
-        genBtn.setOnClickListener {
-            val selected = (0 until subjectsContainer.childCount).mapNotNull { i ->
-                (subjectsContainer.getChildAt(i) as? CheckBox)?.takeIf { it.isChecked }?.text?.toString()
-            }
-            if (selected.isEmpty()) { status.text = "Select at least one subject"; return@setOnClickListener }
-            status.text = "Generating..."
-            CoroutineScope(Dispatchers.Main).launch {
-                var done = 0
-                for (name in selected) {
-                    val subj = allSubjects.find { it.displayName() == name } ?: continue
-                    try {
-                        val request = GenerateRequest(
-                            subject_id = subj.id, term = termSpinner.selectedItem.toString().toInt(),
-                            exam_type = typeSpinner.selectedItem.toString().lowercase().replace(" ", "_"),
-                            cat_number = if (catLayout.visibility == View.VISIBLE) catNumber.selectedItem.toString().toInt() else null,
-                            template = selectedTemplate, school_name = "",
-                            total_marks = 50, mcq_marks = 1, structured_marks_min = 2, structured_marks_max = 8,
-                            duration_hours = 1, duration_minutes = 30, include_marking_scheme = true,
-                            include_images = true, cross_grade = true, question_format = "mixed",
-                            topic_ids = null, avoid_question_ids = emptyList()
-                        )
-                        val resp = withContext(Dispatchers.IO) { RetrofitClient.api.generateExam(request) }
-                        savePaper(subj.displayName(), resp.exam_paper, resp.marking_scheme)
-                        done++
-                    } catch (_: Exception) {}
-                }
-                status.text = "Complete: $done papers"
-            }
-        }
-        scroll.addView(card)
-        return scroll
-    }
-
-    // ---------- SAVED TAB ----------
-    private fun createSavedTab(): View {
-        val rv = RecyclerView(this).apply {
-            layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = SavedAdapter(savedPapers,
-                onView = { paper -> showExamDialog(paper.paper, paper.marking ?: "") },
-                onDelete = { paper ->
-                    savedPapers.remove(paper); savePapers(); adapter?.notifyDataSetChanged()
-                }
-            )
-        }
-        return rv
-    }
-
-    // ---------- GENERATION & DIALOG ----------
-    private fun performGeneration(request: GenerateRequest, status: TextView, label: String) {
-        CoroutineScope(Dispatchers.Main).launch {
-            try {
-                val resp = withContext(Dispatchers.IO) { RetrofitClient.api.generateExam(request) }
-                showExamDialog(resp.exam_paper, resp.marking_scheme ?: "")
-                status.text = "Ready – ${resp.total_marks} marks"
-                savePaper(label, resp.exam_paper, resp.marking_scheme)
-            } catch (e: Exception) {
-                status.text = "Error: ${e.message}"
-            }
-        }
-    }
-
-    private fun loadTopicsForContainer(subjectId: Int, container: LinearLayout) {
-        CoroutineScope(Dispatchers.Main).launch {
-            container.removeAllViews()
-            try {
-                val topics = withContext(Dispatchers.IO) { RetrofitClient.api.getTopics(subjectId) }
-                topics.forEach { topic ->
-                    container.addView(CheckBox(this@MainActivity).apply {
-                        text = "${topic.name} (${topic.question_count} qns)"; tag = topic.id
-                    })
-                }
-            } catch (_: Exception) {
-                container.addView(TextView(this@MainActivity).apply { text = "No topics available" })
-            }
-        }
-    }
-
-    private fun showExamDialog(paper: String, marking: String) {
-        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val examBtn = Button(this).apply {
-            text = "Exam Paper"
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            setBackgroundColor(0xFF16A34A.toInt()); setTextColor(0xFFFFFFFF.toInt())
-        }
-        val markBtn = Button(this).apply {
-            text = "Marking Guide"
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        tabs.addView(examBtn); tabs.addView(markBtn); root.addView(tabs)
-
         val webView = WebView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            settings.javaScriptEnabled = true; webViewClient = WebViewClient()
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            webViewClient = WebViewClient()
+            loadDataWithBaseURL(null, getHtml(), "text/html", "UTF-8", null)
         }
-        root.addView(webView)
-        dialog.setContentView(root)
-
-        examBtn.setOnClickListener {
-            webView.loadDataWithBaseURL(null, paper, "text/html", "UTF-8", null)
-            examBtn.setBackgroundColor(0xFF16A34A.toInt()); markBtn.setBackgroundColor(0xFF64748B.toInt())
-        }
-        markBtn.setOnClickListener {
-            webView.loadDataWithBaseURL(null, marking, "text/html", "UTF-8", null)
-            markBtn.setBackgroundColor(0xFF2563EB.toInt()); examBtn.setBackgroundColor(0xFF64748B.toInt())
-        }
-        webView.loadDataWithBaseURL(null, paper, "text/html", "UTF-8", null)
-        dialog.show()
+        setContentView(webView)
     }
 
-    // ---------- PERSISTENCE ----------
-    private fun loadSavedPapers() {
-        val json = prefs.getString("papers", "[]") ?: "[]"
-        savedPapers.clear()
-        savedPapers.addAll(Gson().fromJson(json, object : TypeToken<List<SavedPaper>>() {}.type))
+    private fun getHtml(): String {
+        return """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>CBE Exam Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        @media print { .no-print { display: none !important; } body { background: white; margin: 0; } }
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; padding: 0; overflow-x: hidden; }
+        body { overflow-y: auto; -webkit-overflow-scrolling: touch; background: #f0f2f5; font-family: system-ui, -apple-system, sans-serif; }
+        .nav-link { padding: 0.6rem 1rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; color: rgba(255,255,255,0.8); transition: all 0.2s; border-bottom: 3px solid transparent; white-space: nowrap; }
+        .nav-link:hover { color: #fff; }
+        .nav-link.active { color: #fff; border-bottom-color: #fbbf24; }
+        .card { background: #ffffff; border-radius: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03); border: 1px solid #e9ebf0; }
+        .form-input, .form-select { width: 100%; padding: 0.65rem 0.9rem; border: 1.5px solid #dce1e8; border-radius: 0.6rem; font-size: 0.875rem; background: #fafbfc; color: #1e293b; transition: border-color 0.2s, box-shadow 0.2s; }
+        .form-input:focus, .form-select:focus { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,0.1); outline: none; }
+        label { font-size: 0.8rem; font-weight: 600; color: #334155; margin-bottom: 0.3rem; display: block; }
+        .toggle { width: 40px; height: 22px; background: #cbd5e1; border-radius: 22px; position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
+        .toggle.on { background: #16a34a; }
+        .toggle::after { content: ''; width: 18px; height: 18px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.2s; }
+        .toggle.on::after { transform: translateX(18px); }
+        .btn { padding: 0.7rem 1.5rem; border-radius: 0.6rem; font-weight: 600; font-size: 0.875rem; cursor: pointer; border: none; display: inline-flex; align-items: center; gap: 0.5rem; transition: all 0.2s; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: #16a34a; color: white; }
+        .btn-primary:hover:not(:disabled) { background: #15803d; }
+        .btn-purple { background: #7c3aed; color: white; }
+        .btn-purple:hover:not(:disabled) { background: #6d28d9; }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.75rem; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .section-title { font-size: 1.15rem; font-weight: 700; color: #0f172a; margin-bottom: 0.25rem; }
+        .section-subtitle { font-size: 0.85rem; color: #64748b; margin-bottom: 1.25rem; }
+        .tpl-card { border: 2px solid #e2e8f0; border-radius: 0.8rem; padding: 0.8rem; cursor: pointer; transition: all 0.2s; background: white; position: relative; }
+        .tpl-card:hover { border-color: #86efac; }
+        .tpl-card.sel { border-color: #16a34a; background: #f0fdf4; }
+        .tpl-card.sel::after { content: "\f00c"; font-family: 'Font Awesome 6 Free'; font-weight: 900; position: absolute; top: 0.5rem; right: 0.5rem; background: #16a34a; color: white; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+        .tpl-preview { font-family: 'Times New Roman', serif; line-height: 1.3; pointer-events: none; }
+    </style>
+</head>
+<body class="text-gray-800">
+    <header class="bg-gradient-to-r from-green-700 to-green-600 text-white no-print sticky top-0 z-30 shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 py-3">
+            <div class="text-center mb-2">
+                <h1 class="text-2xl font-extrabold tracking-tight">CBE Exam Generator</h1>
+                <p class="text-xs text-green-100 mt-0.5">Competency Based Education Assessments</p>
+            </div>
+            <nav class="flex gap-1 justify-center flex-nowrap overflow-x-auto pb-1">
+                <button onclick="switchTab('config')" id="navConfig" class="nav-link active">Home</button>
+                <button onclick="switchTab('topical')" id="navTopical" class="nav-link">Topical</button>
+                <button onclick="switchTab('templates')" id="navTemplates" class="nav-link">Headers</button>
+                <button onclick="switchTab('bulk')" id="navBulk" class="nav-link">Bulk</button>
+                <button onclick="switchTab('saved')" id="navSaved" class="nav-link">Saved</button>
+            </nav>
+        </div>
+    </header>
+    <div class="max-w-5xl mx-auto px-4 py-5">
+        <div id="configTab" class="tab-content active">
+            <div class="card p-5 md:p-6 mb-5">
+                <h2 class="section-title">Generate Assessment</h2>
+                <p class="section-subtitle">Configure and create a professional exam paper.</p>
+                <div class="mb-4"><label>School Name <span class="text-gray-400 font-normal">(optional)</span></label><input type="text" id="schoolName" class="form-input" placeholder="Leave blank for standard header"></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div><label>Learning Area</label><select id="subjectSelect" class="form-select"><option value="">-- Select --</option></select></div>
+                    <div><label>Grade</label><input type="number" id="gradeInput" class="form-input" placeholder="e.g., 8" min="4" max="9" value=""></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div><label>Term</label><select id="termSelect" class="form-select"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></div>
+                    <div><label>Assessment Type</label><select id="examType" class="form-select"><option value="end_term">End Term</option><option value="mid_term">Mid Term</option><option value="opener">Opener</option><option value="cat">CAT</option></select></div>
+                    <div><label>Total Marks</label><input type="number" id="totalMarks" class="form-input" value="50" min="10" max="100"></div>
+                </div>
+                <div id="catWrap" style="display:none;" class="mb-4"><div class="grid grid-cols-2 gap-4"><div><label>CAT Number</label><select id="catNumber" class="form-select"><option value="1">CAT 1</option><option value="2">CAT 2</option><option value="3">CAT 3</option></select></div><div><label>Question Format</label><select id="catFormat" class="form-select"><option value="mixed">Mixed</option><option value="mcq_only">MCQ Only</option><option value="structured_only">Structured Only</option></select></div></div></div>
+                <div class="grid grid-cols-2 gap-4 mb-5"><div><label>Duration (Hours)</label><input type="number" id="durationHours" class="form-input" value="1" min="0" max="3"></div><div><label>Duration (Minutes)</label><input type="number" id="durationMinutes" class="form-input" value="30" min="0" max="59"></div></div>
+                <div class="flex flex-wrap gap-6 mb-5"><div class="flex items-center gap-2 cursor-pointer" onclick="toggleCheck('includeImages','toggleImages')"><span class="text-sm font-semibold text-gray-700">Include Diagrams</span><input type="checkbox" id="includeImages" checked hidden><div class="toggle on" id="toggleImages"></div></div><div class="flex items-center gap-2 cursor-pointer" onclick="toggleCheck('crossGrade','toggleCross')"><span class="text-sm font-semibold text-gray-700">Cross‑Grade Content</span><input type="checkbox" id="crossGrade" checked hidden><div class="toggle on" id="toggleCross"></div></div></div>
+                <button id="generateBtn" class="btn btn-primary w-full justify-center text-base"><i class="fas fa-magic"></i> Generate Paper</button>
+                <div id="statusMessage" class="text-sm text-center mt-3 min-h-5"></div>
+            </div>
+        </div>
+        <div id="topicalTab" class="tab-content"><div class="card p-5 md:p-6 mb-5"><h2 class="section-title">Topical Test</h2><p class="section-subtitle">Select specific topics for a focused assessment.</p><div class="mb-4"><label>School Name <span class="text-gray-400 font-normal">(optional)</span></label><input type="text" id="topicalSchoolName" class="form-input"></div><div class="grid grid-cols-2 gap-4 mb-4"><div><label>Learning Area</label><select id="topicalSubjectSelect" class="form-select"><option value="">-- Select --</option></select></div><div><label>Grade</label><input type="number" id="topicalGradeInput" class="form-input" placeholder="e.g., 8" min="4" max="9"></div></div><div class="grid grid-cols-2 gap-4 mb-4"><div><label>Term</label><select id="topicalTermSelect" class="form-select"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></div><div><label>Total Marks</label><input type="number" id="topicalTotalMarks" class="form-input" value="50" min="10" max="100"></div></div><div class="mb-4"><label>Topics</label><div id="topicalTopicsContainer" class="max-h-48 overflow-y-auto border rounded-lg p-3 space-y-2 bg-gray-50"><p class="text-gray-400 text-xs text-center py-4">Select a learning area first</p></div></div><div class="flex items-center gap-2 mb-4 cursor-pointer" onclick="toggleCheck('topicalIncludeImages','toggleTopicalImages')"><span class="text-sm font-semibold text-gray-700">Include Diagrams</span><input type="checkbox" id="topicalIncludeImages" checked hidden><div class="toggle on" id="toggleTopicalImages"></div></div><button id="topicalGenerateBtn" class="btn btn-primary w-full justify-center text-base"><i class="fas fa-magic"></i> Generate Topical Test</button><div id="topicalStatusMessage" class="text-sm text-center mt-3 min-h-5"></div></div></div>
+        <div id="templatesTab" class="tab-content"><div class="card p-5 md:p-6 mb-5"><h2 class="section-title">Header Styles</h2><p class="section-subtitle">Choose a cover page design. Selected style applies to all papers.</p><div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"><div class="tpl-card sel text-center" data-template="classic" onclick="selectTemplate('classic')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs"><div class="font-bold text-center uppercase border-b-2 border-double pb-1">MONITORING PROGRESS</div><div class="text-center text-[10px]">Grade · Subject</div></div><p class="text-xs font-bold">Classic</p></div><div class="tpl-card text-center" data-template="modern" onclick="selectTemplate('modern')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs"><div class="bg-green-100 text-center font-bold py-0.5 uppercase">School Name</div><div class="text-center font-bold mt-1">SUBJECT</div></div><p class="text-xs font-bold">Modern</p></div><div class="tpl-card text-center" data-template="framed" onclick="selectTemplate('framed')"><div class="tpl-preview bg-gray-50 border-2 border-black rounded p-2 mb-2 text-xs"><div class="font-bold text-center uppercase">SCHOOL</div><hr class="my-1"><div class="text-center font-bold">Subject</div></div><p class="text-xs font-bold">Framed</p></div><div class="tpl-card text-center" data-template="minimal" onclick="selectTemplate('minimal')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs"><hr class="border-black mb-1"><hr class="border-black"><div class="text-center font-bold mt-1">SCHOOL</div><hr class="border-black mt-1"><hr class="border-black"></div><p class="text-xs font-bold">Minimal</p></div><div class="tpl-card text-center" data-template="assessment" onclick="selectTemplate('assessment')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs"><div class="text-center font-bold uppercase text-[11px]">School Based Assessment</div><div class="text-center font-bold mt-1">Subject</div></div><p class="text-xs font-bold">Assessment</p></div><div class="tpl-card text-center" data-template="professional" onclick="selectTemplate('professional')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs flex"><div style="width:4px;background:#1a1a1a;margin-right:6px;"></div><div><div class="font-bold">SCHOOL</div><div class="text-[10px]">Grade · Subject</div></div></div><p class="text-xs font-bold">Professional</p></div><div class="tpl-card text-center" data-template="elegant" onclick="selectTemplate('elegant')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs text-center"><div class="italic font-bold text-lg">School</div><hr class="w-1/2 mx-auto my-1"><div>Subject · Grade</div></div><p class="text-xs font-bold">Elegant</p></div></div></div></div>
+        <div id="bulkTab" class="tab-content"><div class="card p-5 md:p-6 mb-5"><h2 class="section-title">Bulk Generation</h2><p class="section-subtitle">Generate papers for all subjects in a grade.</p><div class="grid grid-cols-2 gap-4 mb-4"><div><label>Grade</label><input type="number" id="bulkGradeInput" class="form-input" placeholder="e.g., 8" min="4" max="9"></div><div><label>Term</label><select id="bulkTerm" class="form-select"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></div></div><div class="grid grid-cols-2 gap-4 mb-4"><div><label>Assessment Type</label><select id="bulkExamType" class="form-select"><option value="end_term">End Term</option><option value="mid_term">Mid Term</option><option value="opener">Opener</option><option value="cat">CAT</option></select></div><div id="bulkCatWrap" style="display:none;"><label>CAT Number</label><select id="bulkCatNumber" class="form-select"><option value="1">CAT 1</option><option value="2">CAT 2</option><option value="3">CAT 3</option></select></div></div><div class="mb-4"><label>Learning Areas</label><div id="bulkSubjects" class="max-h-56 overflow-y-auto border rounded-lg p-3 space-y-2 bg-gray-50"><p class="text-gray-400 text-xs text-center py-6">Type a grade to see subjects</p></div></div><button id="bulkGenerateBtn" class="btn btn-purple w-full justify-center text-base"><i class="fas fa-layer-group"></i> Generate All Papers</button><div id="bulkStatus" class="text-sm text-center mt-3 min-h-5"></div></div></div>
+        <div id="savedTab" class="tab-content"><div class="card p-5 md:p-6 mb-5"><div class="flex justify-between items-center mb-4"><h2 class="section-title">Saved Papers</h2><button onclick="clearAllSaved()" class="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"><i class="fas fa-trash"></i> Clear All</button></div><div id="savedPapers" class="space-y-2"></div></div></div>
+        <div id="examOutput" class="hidden"><div class="flex gap-2 mb-3 no-print"><button id="examTabBtn" class="flex-1 py-2.5 rounded-lg font-semibold text-sm bg-green-600 text-white" onclick="showOutputTab('exam')"><i class="fas fa-file-alt mr-1"></i> Exam Paper</button><button id="markingTabBtn" class="flex-1 py-2.5 rounded-lg font-semibold text-sm bg-gray-200 text-gray-700" onclick="showOutputTab('marking')"><i class="fas fa-check-circle mr-1"></i> Marking Guide</button></div><div id="examPanel" class="card p-4 md:p-5 mb-3"><div class="flex justify-between items-center mb-3 no-print"><h3 class="font-bold text-sm">Assessment Paper</h3><div class="flex gap-2"><button onclick="downloadOutput('exam')" class="btn btn-sm bg-blue-600 text-white"><i class="fas fa-download"></i> Download</button><button onclick="printOutput('examPanel')" class="btn btn-sm bg-gray-100 border"><i class="fas fa-print"></i> Print</button></div></div><div id="examContent"></div></div><div id="markingPanel" class="card p-4 md:p-5 hidden"><div class="flex justify-between items-center mb-3 no-print"><h3 class="font-bold text-sm">Marking Guide</h3><div class="flex gap-2"><button onclick="downloadOutput('marking')" class="btn btn-sm bg-blue-600 text-white"><i class="fas fa-download"></i> Download</button><button onclick="printOutput('markingPanel')" class="btn btn-sm bg-gray-100 border"><i class="fas fa-print"></i> Print</button></div></div><div id="markingContent"></div></div></div>
+    </div>
+    <script>
+        const API = 'https://exams-gen.onrender.com';
+        let selectedTemplate = 'classic';
+        let usedQuestionIds = [];
+        let allSubjects = [];
+        let savedPapers = JSON.parse(localStorage.getItem('cbeSavedPapers') || '[]');
+        function toggleCheck(checkboxId, toggleId) { const cb = document.getElementById(checkboxId); cb.checked = !cb.checked; document.getElementById(toggleId).classList.toggle('on', cb.checked); }
+        function switchTab(tab) { document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.getElementById(tab + 'Tab').classList.add('active'); document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active')); const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1); const navBtn = document.getElementById(navId); if (navBtn) navBtn.classList.add('active'); if (tab === 'topical') refreshTopicalSubjects(); if (tab === 'bulk') refreshBulkTab(); if (tab === 'saved') renderSaved(); }
+        document.getElementById('examType').addEventListener('change', function() { document.getElementById('catWrap').style.display = this.value === 'cat' ? 'block' : 'none'; });
+        document.getElementById('bulkExamType').addEventListener('change', function() { document.getElementById('bulkCatWrap').style.display = this.value === 'cat' ? 'block' : 'none'; });
+        function showOutputTab(tab) { const e = document.getElementById('examTabBtn'), m = document.getElementById('markingTabBtn'); if (tab === 'exam') { e.className = 'flex-1 py-2.5 rounded-lg font-semibold text-sm bg-green-600 text-white'; m.className = 'flex-1 py-2.5 rounded-lg font-semibold text-sm bg-gray-200 text-gray-700'; document.getElementById('examPanel').classList.remove('hidden'); document.getElementById('markingPanel').classList.add('hidden'); } else { e.className = 'flex-1 py-2.5 rounded-lg font-semibold text-sm bg-gray-200 text-gray-700'; m.className = 'flex-1 py-2.5 rounded-lg font-semibold text-sm bg-blue-600 text-white'; document.getElementById('examPanel').classList.add('hidden'); document.getElementById('markingPanel').classList.remove('hidden'); } }
+        function selectTemplate(t) { selectedTemplate = t; document.querySelectorAll('.tpl-card').forEach(c => c.classList.remove('sel')); document.querySelector(`[data-template="${t}"]`).classList.add('sel'); }
+        async function loadAllSubjects() { try { const res = await fetch(`${API}/subjects/`); allSubjects = await res.json(); allSubjects.sort((a,b) => a.name.localeCompare(b.name)); const home = document.getElementById('subjectSelect'); const top = document.getElementById('topicalSubjectSelect'); home.innerHTML = '<option value="">-- Select --</option>'; top.innerHTML = '<option value="">-- Select --</option>'; allSubjects.forEach(s => { const displayName = s.name.replace(/ Grade \d+$/, ''); home.innerHTML += `<option value="${s.id}">${displayName}</option>`; top.innerHTML += `<option value="${s.id}">${displayName}</option>`; }); } catch(e){ console.error(e); } }
+        document.getElementById('subjectSelect').addEventListener('change', function(){ const sub = allSubjects.find(s => s.id == this.value); if(sub) document.getElementById('gradeInput').value = sub.grade; });
+        document.getElementById('topicalSubjectSelect').addEventListener('change', function(){ const sub = allSubjects.find(s => s.id == this.value); if(sub) document.getElementById('topicalGradeInput').value = sub.grade; loadTopicsForSubject(this.value); });
+        async function loadTopicsForSubject(sid) { const container = document.getElementById('topicalTopicsContainer'); if(!sid){ container.innerHTML='<p class="text-gray-400 text-xs text-center py-4">Select a learning area first</p>'; return; } try { const res = await fetch(`${API}/subjects/${sid}/topics`); const topics = await res.json(); container.innerHTML = topics.length ? topics.map(t => `<label class="flex items-center gap-2 cursor-pointer py-1"><input type="checkbox" value="${t.id}" class="topical-topic-checkbox"><span class="text-xs">${t.name} (${t.question_count} qns)</span></label>`).join('') : '<p class="text-gray-400 text-xs text-center py-4">No topics available</p>'; } catch(e){ console.error(e); } }
+        function refreshTopicalSubjects() { loadAllSubjects(); }
+        document.getElementById('bulkGradeInput').addEventListener('input', function() { const grade = this.value; const container = document.getElementById('bulkSubjects'); if(!grade){ container.innerHTML='<p class="text-gray-400 text-xs text-center py-6">Type a grade to see subjects</p>'; return; } const filtered = allSubjects.filter(s => s.grade == grade); container.innerHTML = filtered.length ? filtered.map(s => `<label class="flex items-center gap-2 cursor-pointer py-1"><input type="checkbox" value="${s.id}" class="bulk-checkbox"><span class="text-xs">${s.name.replace(/ Grade \d+$/, '')}</span></label>`).join('') : '<p class="text-gray-400 text-xs text-center py-6">No subjects found</p>'; });
+        function refreshBulkTab() { loadAllSubjects(); }
+        async function generateExam(body, btn, statusEl, saveLabel) { btn.disabled = true; statusEl.innerHTML = '<span class="text-blue-500"><i class="fas fa-spinner fa-spin mr-1"></i> Generating...</span>'; const cleanAvoid = usedQuestionIds.filter(id => typeof id === 'number' && !isNaN(id) && id > 0); const cleanBody = { ...body, avoid_question_ids: cleanAvoid }; try { const res = await fetch(`${API}/generate-exam`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cleanBody) }); const data = await res.json(); if (!res.ok) throw new Error(data.detail || data.message || 'Error'); data.questions.forEach(q => { if (q.id > 0) usedQuestionIds.push(Number(q.id)); }); if (usedQuestionIds.length > 500) usedQuestionIds = usedQuestionIds.slice(-500); document.getElementById('examContent').innerHTML = data.exam_paper; document.getElementById('markingContent').innerHTML = data.marking_scheme || ''; document.getElementById('examOutput').classList.remove('hidden'); showOutputTab('exam'); document.getElementById('examOutput').scrollIntoView({ behavior: 'smooth' }); statusEl.innerHTML = `<span class="text-green-600"><i class="fas fa-check-circle mr-1"></i> Ready – ${data.total_marks} marks</span>`; savedPapers.unshift({ subject: saveLabel, date: new Date().toLocaleString(), paper: data.exam_paper, marking: data.marking_scheme }); if (savedPapers.length > 30) savedPapers.pop(); localStorage.setItem('cbeSavedPapers', JSON.stringify(savedPapers)); } catch (err) { statusEl.innerHTML = `<span class="text-red-600"><i class="fas fa-exclamation-circle mr-1"></i> ${err.message}</span>`; } finally { btn.disabled = false; } }
+        document.getElementById('generateBtn').addEventListener('click', async () => { const sid = document.getElementById('subjectSelect').value; const grade = document.getElementById('gradeInput').value; if (!sid) { document.getElementById('statusMessage').innerHTML = '<span class="text-red-600">Please select a learning area.</span>'; return; } const examType = document.getElementById('examType').value; const catFormat = examType === 'cat' ? document.getElementById('catFormat').value : 'mixed'; await generateExam({ subject_id: parseInt(sid), term: parseInt(document.getElementById('termSelect').value), exam_type: examType, cat_number: examType === 'cat' ? parseInt(document.getElementById('catNumber').value) : null, template: selectedTemplate, school_name: document.getElementById('schoolName').value || '', total_marks: parseInt(document.getElementById('totalMarks').value) || 50, mcq_marks: 1, structured_marks_min: 2, structured_marks_max: 8, duration_hours: parseInt(document.getElementById('durationHours').value) || 1, duration_minutes: parseInt(document.getElementById('durationMinutes').value) || 30, include_marking_scheme: true, include_images: document.getElementById('includeImages').checked, cross_grade: document.getElementById('crossGrade').checked, question_format: examType === 'cat' ? catFormat : 'mixed' }, document.getElementById('generateBtn'), document.getElementById('statusMessage'), document.getElementById('subjectSelect').selectedOptions[0]?.textContent || 'Assessment'); });
+        document.getElementById('topicalGenerateBtn').addEventListener('click', async () => { const sid = document.getElementById('topicalSubjectSelect').value; if (!sid) { document.getElementById('topicalStatusMessage').innerHTML = '<span class="text-red-600">Please select a learning area.</span>'; return; } const topics = Array.from(document.querySelectorAll('.topical-topic-checkbox:checked')).map(cb => parseInt(cb.value)); if (!topics.length) { document.getElementById('topicalStatusMessage').innerHTML = '<span class="text-red-600">Select at least one topic.</span>'; return; } await generateExam({ subject_id: parseInt(sid), term: parseInt(document.getElementById('topicalTermSelect').value), exam_type: 'topical', topic_ids: topics, template: selectedTemplate, school_name: document.getElementById('topicalSchoolName').value || '', total_marks: parseInt(document.getElementById('topicalTotalMarks').value) || 50, mcq_marks: 1, structured_marks_min: 2, structured_marks_max: 8, duration_hours: 1, duration_minutes: 30, include_marking_scheme: true, include_images: document.getElementById('topicalIncludeImages').checked, cross_grade: false, question_format: 'mixed' }, document.getElementById('topicalGenerateBtn'), document.getElementById('topicalStatusMessage'), 'Topical: ' + (document.getElementById('topicalSubjectSelect').selectedOptions[0]?.textContent || '')); });
+        document.getElementById('bulkGenerateBtn').addEventListener('click', async () => { const selected = Array.from(document.querySelectorAll('.bulk-checkbox:checked')).map(cb => cb.value); if (!selected.length) { document.getElementById('bulkStatus').innerHTML = '<span class="text-red-600 text-xs">Select at least one subject.</span>'; return; } const term = parseInt(document.getElementById('bulkTerm').value); const examType = document.getElementById('bulkExamType').value; const catNum = examType === 'cat' ? parseInt(document.getElementById('bulkCatNumber').value) : null; document.getElementById('bulkStatus').innerHTML = '<span class="text-blue-500 text-xs"><i class="fas fa-spinner fa-spin mr-1"></i> Generating papers...</span>'; let done = 0; for (const sid of selected) { try { const body = { subject_id: parseInt(sid), term, exam_type: examType, cat_number: catNum, template: selectedTemplate, school_name: '', total_marks: 50, mcq_marks: 1, structured_marks_min: 2, structured_marks_max: 8, duration_hours: 1, duration_minutes: 30, include_marking_scheme: true, include_images: true, cross_grade: true, question_format: 'mixed', avoid_question_ids: [] }; const res = await fetch(`${API}/generate-exam`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const data = await res.json(); if (res.ok) { done++; savedPapers.unshift({ subject: data.questions[0]?.text?.substring(0,40) || 'Assessment', date: new Date().toLocaleString(), paper: data.exam_paper, marking: data.marking_scheme }); if (savedPapers.length > 30) savedPapers.pop(); } } catch(e) { console.error(e); } } localStorage.setItem('cbeSavedPapers', JSON.stringify(savedPapers)); document.getElementById('bulkStatus').innerHTML = `<span class="text-green-600 text-xs"><i class="fas fa-check-circle mr-1"></i> Complete: ${done}/${selected.length} papers.</span>`; });
+        function renderSaved() { const container = document.getElementById('savedPapers'); if (!savedPapers.length) { container.innerHTML = '<p class="text-gray-400 text-sm text-center py-6">No saved papers yet.</p>'; return; } container.innerHTML = savedPapers.map((p, i) => `<div class="flex justify-between items-center py-3 border-b border-gray-100"><div><p class="font-medium text-sm">${p.subject}</p><p class="text-xs text-gray-400">${p.date}</p></div><div class="flex gap-1"><button onclick="viewSaved(${i})" class="text-green-600 text-xs px-2 py-1 border border-green-200 rounded hover:bg-green-50">View</button><button onclick="downloadSaved(${i})" class="text-blue-600 text-xs px-2 py-1 border border-blue-200 rounded hover:bg-blue-50">DL</button><button onclick="deleteSaved(${i})" class="text-red-500 text-xs px-2 py-1 border border-red-200 rounded hover:bg-red-50">Del</button></div></div>`).join(''); }
+        function viewSaved(i) { const p = savedPapers[i]; document.getElementById('examContent').innerHTML = p.paper; document.getElementById('markingContent').innerHTML = p.marking || ''; document.getElementById('examOutput').classList.remove('hidden'); showOutputTab('exam'); document.getElementById('examOutput').scrollIntoView({ behavior: 'smooth' }); }
+        function downloadSaved(i) { const p = savedPapers[i]; const blob = new Blob([`<html><body style="font-family:'Times New Roman',serif;padding:15px;">${p.paper}</body></html>`], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `saved_paper_${i+1}.html`; a.click(); }
+        function deleteSaved(i) { savedPapers.splice(i,1); localStorage.setItem('cbeSavedPapers', JSON.stringify(savedPapers)); renderSaved(); }
+        function clearAllSaved() { if (confirm('Delete all saved papers?')) { savedPapers = []; localStorage.removeItem('cbeSavedPapers'); renderSaved(); } }
+        function printOutput(panelId) { const content = document.getElementById(panelId).querySelector('#examContent, #markingContent')?.innerHTML || ''; const w = window.open('', '_blank'); w.document.write(`<html><head><style>body{font-family:'Times New Roman',serif;padding:15px;}@media print{body{margin:0;}}</style></head><body>${content}</body></html>`); w.document.close(); w.focus(); setTimeout(() => w.print(), 400); }
+        function downloadOutput(type) { const content = type === 'exam' ? document.getElementById('examContent').innerHTML : document.getElementById('markingContent').innerHTML; const blob = new Blob([`<html><body style="font-family:'Times New Roman',serif;padding:15px;">${content}</body></html>`], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `assessment_${type}_${new Date().toISOString().slice(0,10)}.html`; a.click(); }
+        (function init() { loadAllSubjects(); renderSaved(); })();
+    </script>
+</body>
+</html>
+        """.trimIndent()
     }
-
-    private fun savePapers() {
-        prefs.edit().putString("papers", Gson().toJson(savedPapers)).apply()
-    }
-
-    private fun savePaper(subject: String, paper: String, marking: String?) {
-        val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-        savedPapers.add(0, SavedPaper(subject, date, paper, marking))
-        if (savedPapers.size > 30) savedPapers.removeAt(savedPapers.size - 1)
-        savePapers()
-        viewPager.adapter?.notifyDataSetChanged()
-    }
-
-    private fun updateSpinnerData(spinner: Spinner) {
-        val names = allSubjects.map { it.displayName() }
-        if (names.isEmpty()) return
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinner.adapter = adapter
-    }
-}
-
-// ==================== SAVED ADAPTER ====================
-class SavedAdapter(
-    private val list: List<SavedPaper>,
-    private val onView: (SavedPaper) -> Unit,
-    private val onDelete: (SavedPaper) -> Unit
-) : RecyclerView.Adapter<SavedAdapter.ViewHolder>() {
-
-    class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val row = LinearLayout(parent.context).apply {
-            orientation = LinearLayout.HORIZONTAL; setPadding(16, 12, 16, 12); gravity = Gravity.CENTER_VERTICAL
-        }
-        val info = LinearLayout(parent.context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val title = TextView(parent.context).apply {
-            textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD)
-        }
-        val date = TextView(parent.context).apply {
-            textSize = 12f; setTextColor(0xFF666666.toInt())
-        }
-        info.addView(title); info.addView(date); row.addView(info)
-
-        row.addView(Button(parent.context).apply {
-            text = "View"; setBackgroundColor(0xFF16A34A.toInt()); setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
-        })
-        row.addView(Button(parent.context).apply {
-            text = "Del"; setBackgroundColor(0xFFEF4444.toInt()); setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
-        })
-        return ViewHolder(row)
-    }
-
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val paper = list[position]
-        val row = holder.itemView as LinearLayout
-        val info = row.getChildAt(0) as LinearLayout
-        (info.getChildAt(0) as TextView).text = paper.subject
-        (info.getChildAt(1) as TextView).text = paper.date
-        (row.getChildAt(1) as Button).setOnClickListener { onView(paper) }
-        (row.getChildAt(2) as Button).setOnClickListener { onDelete(paper) }
-    }
-
-    override fun getItemCount() = list.size
 }
