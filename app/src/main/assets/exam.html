@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>CBE Exam Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        @media print { .no-print { display: none !important; } body { background: white; margin: 0; } }
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; padding: 0; overflow-x: hidden; }
+        body { overflow-y: auto; -webkit-overflow-scrolling: touch; background: #f0f2f5; font-family: system-ui, -apple-system, sans-serif; }
+        .nav-link { padding: 0.6rem 1rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; color: rgba(255,255,255,0.8); transition: all 0.2s; border-bottom: 3px solid transparent; white-space: nowrap; }
+        .nav-link:hover { color: #fff; }
+        .nav-link.active { color: #fff; border-bottom-color: #fbbf24; }
+        .card { background: #ffffff; border-radius: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03); border: 1px solid #e9ebf0; }
+        .form-input, .form-select { width: 100%; padding: 0.65rem 0.9rem; border: 1.5px solid #dce1e8; border-radius: 0.6rem; font-size: 0.875rem; background: #fafbfc; color: #1e293b; transition: border-color 0.2s, box-shadow 0.2s; }
+        .form-input:focus, .form-select:focus { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,0.1); outline: none; }
+        label { font-size: 0.8rem; font-weight: 600; color: #334155; margin-bottom: 0.3rem; display: block; }
+        .toggle { width: 40px; height: 22px; background: #cbd5e1; border-radius: 22px; position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
+        .toggle.on { background: #16a34a; }
+        .toggle::after { content: ''; width: 18px; height: 18px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.2s; }
+        .toggle.on::after { transform: translateX(18px); }
+        .btn { padding: 0.7rem 1.5rem; border-radius: 0.6rem; font-weight: 600; font-size: 0.875rem; cursor: pointer; border: none; display: inline-flex; align-items: center; gap: 0.5rem; transition: all 0.2s; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: #16a34a; color: white; }
+        .btn-primary:hover:not(:disabled) { background: #15803d; }
+        .btn-purple { background: #7c3aed; color: white; }
+        .btn-purple:hover:not(:disabled) { background: #6d28d9; }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.75rem; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .section-title { font-size: 1.15rem; font-weight: 700; color: #0f172a; margin-bottom: 0.25rem; }
+        .section-subtitle { font-size: 0.85rem; color: #64748b; margin-bottom: 1.25rem; }
+        .tpl-card { border: 2px solid #e2e8f0; border-radius: 0.8rem; padding: 0.8rem; cursor: pointer; transition: all 0.2s; background: white; position: relative; }
+        .tpl-card:hover { border-color: #86efac; }
+        .tpl-card.sel { border-color: #16a34a; background: #f0fdf4; }
+        .tpl-card.sel::after { content: "\f00c"; font-family: 'Font Awesome 6 Free'; font-weight: 900; position: absolute; top: 0.5rem; right: 0.5rem; background: #16a34a; color: white; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+        .tpl-preview { font-family: 'Times New Roman', serif; line-height: 1.3; pointer-events: none; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-gradient-to-r from-green-700 to-green-600 text-white no-print sticky top-0 z-30 shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 py-3">
+            <div class="text-center mb-2">
+                <h1 class="text-2xl font-extrabold tracking-tight">CBE Exam Generator</h1>
+                <p class="text-xs text-green-100 mt-0.5">Competency Based Education Assessments</p>
+            </div>
+            <nav class="flex gap-1 justify-center flex-nowrap overflow-x-auto pb-1">
+                <button onclick="switchTab('config')" id="navConfig" class="nav-link active">Home</button>
+                <button onclick="switchTab('topical')" id="navTopical" class="nav-link">Topical</button>
+                <button onclick="switchTab('templates')" id="navTemplates" class="nav-link">Headers</button>
+                <button onclick="switchTab('bulk')" id="navBulk" class="nav-link">Bulk</button>
+                <button onclick="switchTab('saved')" id="navSaved" class="nav-link">Saved</button>
+            </nav>
+        </div>
+    </header>
+
+    <div class="max-w-5xl mx-auto px-4 py-5">
+
+        <!-- HOME TAB -->
+        <div id="configTab" class="tab-content active">
+            <div class="card p-5 md:p-6 mb-5">
+                <h2 class="section-title">Generate Assessment</h2>
+                <p class="section-subtitle">Configure and create a professional exam paper.</p>
+                <div class="mb-4">
+                    <label>School Name <span class="text-gray-400 font-normal">(optional)</span></label>
+                    <input type="text" id="schoolName" class="form-input" placeholder="Leave blank for standard header">
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div><label>Learning Area</label><select id="subjectSelect" class="form-select"><option value="">-- Select --</option></select></div>
+                    <div><label>Grade</label><input type="number" id="gradeInput" class="form-input" placeholder="e.g., 8" min="4" max="9"></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div><label>Term</label><select id="termSelect" class="form-select"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></div>
+                    <div><label>Assessment Type</label><select id="examType" class="form-select"><option value="end_term">End Term</option><option value="mid_term">Mid Term</option><option value="opener">Opener</option><option value="cat">CAT</option></select></div>
+                    <div><label>Total Marks</label><input type="number" id="totalMarks" class="form-input" value="50" min="10" max="100"></div>
+                </div>
+                <div id="catWrap" style="display:none;" class="mb-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label>CAT Number</label><select id="catNumber" class="form-select"><option value="1">CAT 1</option><option value="2">CAT 2</option><option value="3">CAT 3</option></select></div>
+                        <div><label>Question Format</label><select id="catFormat" class="form-select"><option value="mixed">Mixed</option><option value="mcq_only">MCQ Only</option><option value="structured_only">Structured Only</option></select></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-5">
+                    <div><label>Duration (Hours)</label><input type="number" id="durationHours" class="form-input" value="1" min="0" max="3"></div>
+                    <div><label>Duration (Minutes)</label><input type="number" id="durationMinutes" class="form-input" value="30" min="0" max="59"></div>
+                </div>
+                <div class="flex flex-wrap gap-6 mb-5">
+                    <div class="flex items-center gap-2 cursor-pointer" onclick="toggleCheck('includeImages','toggleImages')"><span class="text-sm font-semibold text-gray-700">Include Diagrams</span><input type="checkbox" id="includeImages" checked hidden><div class="toggle on" id="toggleImages"></div></div>
+                    <div class="flex items-center gap-2 cursor-pointer" onclick="toggleCheck('crossGrade','toggleCross')"><span class="text-sm font-semibold text-gray-700">Cross‑Grade Content</span><input type="checkbox" id="crossGrade" checked hidden><div class="toggle on" id="toggleCross"></div></div>
+                </div>
+                <button id="generateBtn" class="btn btn-primary w-full justify-center text-base"><i class="fas fa-magic"></i> Generate Paper</button>
+                <div id="statusMessage" class="text-sm text-center mt-3 min-h-5"></div>
+            </div>
+        </div>
+
+        <!-- TOPICAL TAB -->
+        <div id="topicalTab" class="tab-content">
+            <div class="card p-5 md:p-6 mb-5">
+                <h2 class="section-title">Topical Test</h2>
+                <p class="section-subtitle">Select specific topics for a focused assessment.</p>
+                <div class="mb-4"><label>School Name <span class="text-gray-400 font-normal">(optional)</span></label><input type="text" id="topicalSchoolName" class="form-input"></div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div><label>Learning Area</label><select id="topicalSubjectSelect" class="form-select"><option value="">-- Select --</option></select></div>
+                    <div><label>Grade</label><input type="number" id="topicalGradeInput" class="form-input" placeholder="e.g., 8" min="4" max="9"></div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div><label>Term</label><select id="topicalTermSelect" class="form-select"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></div>
+                    <div><label>Total Marks</label><input type="number" id="topicalTotalMarks" class="form-input" value="50" min="10" max="100"></div>
+                </div>
+                <div class="mb-4"><label>Topics</label><div id="topicalTopicsContainer" class="max-h-48 overflow-y-auto border rounded-lg p-3 space-y-2 bg-gray-50"><p class="text-gray-400 text-xs text-center py-4">Select a learning area first</p></div></div>
+                <div class="flex items-center gap-2 mb-4 cursor-pointer" onclick="toggleCheck('topicalIncludeImages','toggleTopicalImages')"><span class="text-sm font-semibold text-gray-700">Include Diagrams</span><input type="checkbox" id="topicalIncludeImages" checked hidden><div class="toggle on" id="toggleTopicalImages"></div></div>
+                <button id="topicalGenerateBtn" class="btn btn-primary w-full justify-center text-base"><i class="fas fa-magic"></i> Generate Topical Test</button>
+                <div id="topicalStatusMessage" class="text-sm text-center mt-3 min-h-5"></div>
+            </div>
+        </div>
+
+        <!-- HEADERS TAB -->
+        <div id="templatesTab" class="tab-content">
+            <div class="card p-5 md:p-6 mb-5">
+                <h2 class="section-title">Header Styles</h2>
+                <p class="section-subtitle">Choose a cover page design. Selected style applies to all papers.</p>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    <div class="tpl-card sel text-center" data-template="classic" onclick="selectTemplate('classic')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs"><div class="font-bold text-center uppercase border-b-2 border-double pb-1">MONITORING PROGRESS</div><div class="text-center text-[10px]">Grade · Subject</div></div><p class="text-xs font-bold">Classic</p></div>
+                    <div class="tpl-card text-center" data-template="modern" onclick="selectTemplate('modern')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs"><div class="bg-green-100 text-center font-bold py-0.5 uppercase">School Name</div><div class="text-center font-bold mt-1">SUBJECT</div></div><p class="text-xs font-bold">Modern</p></div>
+                    <div class="tpl-card text-center" data-template="framed" onclick="selectTemplate('framed')"><div class="tpl-preview bg-gray-50 border-2 border-black rounded p-2 mb-2 text-xs"><div class="font-bold text-center uppercase">SCHOOL</div><hr class="my-1"><div class="text-center font-bold">Subject</div></div><p class="text-xs font-bold">Framed</p></div>
+                    <div class="tpl-card text-center" data-template="minimal" onclick="selectTemplate('minimal')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs"><hr class="border-black mb-1"><hr class="border-black"><div class="text-center font-bold mt-1">SCHOOL</div><hr class="border-black mt-1"><hr class="border-black"></div><p class="text-xs font-bold">Minimal</p></div>
+                    <div class="tpl-card text-center" data-template="assessment" onclick="selectTemplate('assessment')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs"><div class="text-center font-bold uppercase text-[11px]">School Based Assessment</div><div class="text-center font-bold mt-1">Subject</div></div><p class="text-xs font-bold">Assessment</p></div>
+                    <div class="tpl-card text-center" data-template="professional" onclick="selectTemplate('professional')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs flex"><div style="width:4px;background:#1a1a1a;margin-right:6px;"></div><div><div class="font-bold">SCHOOL</div><div class="text-[10px]">Grade · Subject</div></div></div><p class="text-xs font-bold">Professional</p></div>
+                    <div class="tpl-card text-center" data-template="elegant" onclick="selectTemplate('elegant')"><div class="tpl-preview bg-gray-50 border rounded p-2 mb-2 text-xs text-center"><div class="italic font-bold text-lg">School</div><hr class="w-1/2 mx-auto my-1"><div>Subject · Grade</div></div><p class="text-xs font-bold">Elegant</p></div>
+                </div>
+                <!-- Preview -->
+                <div class="border rounded-lg p-4 bg-gray-50">
+                    <h3 class="text-sm font-bold mb-2">Live Preview</h3>
+                    <div id="templatePreview" class="max-h-80 overflow-y-auto" style="font-family:'Times New Roman',serif; font-size:9pt;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BULK TAB -->
+        <div id="bulkTab" class="tab-content">
+            <div class="card p-5 md:p-6 mb-5">
+                <h2 class="section-title">Bulk Generation</h2>
+                <p class="section-subtitle">Generate papers for all subjects in a grade.</p>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div><label>Grade</label><input type="number" id="bulkGradeInput" class="form-input" placeholder="e.g., 8" min="4" max="9"></div>
+                    <div><label>Term</label><select id="bulkTerm" class="form-select"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div><label>Assessment Type</label><select id="bulkExamType" class="form-select"><option value="end_term">End Term</option><option value="mid_term">Mid Term</option><option value="opener">Opener</option><option value="cat">CAT</option></select></div>
+                    <div id="bulkCatWrap" style="display:none;"><label>CAT Number</label><select id="bulkCatNumber" class="form-select"><option value="1">CAT 1</option><option value="2">CAT 2</option><option value="3">CAT 3</option></select></div>
+                </div>
+                <div class="mb-4"><label>Learning Areas</label><div id="bulkSubjects" class="max-h-56 overflow-y-auto border rounded-lg p-3 space-y-2 bg-gray-50"><p class="text-gray-400 text-xs text-center py-6">Type a grade to see subjects</p></div></div>
+                <button id="bulkGenerateBtn" class="btn btn-purple w-full justify-center text-base"><i class="fas fa-layer-group"></i> Generate All Papers</button>
+                <div id="bulkStatus" class="text-sm text-center mt-3 min-h-5"></div>
+            </div>
+        </div>
+
+        <!-- SAVED TAB -->
+        <div id="savedTab" class="tab-content">
+            <div class="card p-5 md:p-6 mb-5">
+                <div class="flex justify-between items-center mb-4"><h2 class="section-title">Saved Papers</h2><button onclick="clearAllSaved()" class="btn btn-sm bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"><i class="fas fa-trash"></i> Clear All</button></div>
+                <div id="savedPapers" class="space-y-2"></div>
+            </div>
+        </div>
+
+        <!-- OUTPUT -->
+        <div id="examOutput" class="hidden">
+            <div class="flex gap-2 mb-3 no-print">
+                <button id="examTabBtn" class="flex-1 py-2.5 rounded-lg font-semibold text-sm bg-green-600 text-white" onclick="showOutputTab('exam')"><i class="fas fa-file-alt mr-1"></i> Exam Paper</button>
+                <button id="markingTabBtn" class="flex-1 py-2.5 rounded-lg font-semibold text-sm bg-gray-200 text-gray-700" onclick="showOutputTab('marking')"><i class="fas fa-check-circle mr-1"></i> Marking Guide</button>
+            </div>
+            <div id="examPanel" class="card p-4 md:p-5 mb-3">
+                <div class="flex justify-between items-center mb-3 no-print"><h3 class="font-bold text-sm">Assessment Paper</h3><div class="flex gap-2"><button onclick="downloadOutput('exam')" class="btn btn-sm bg-blue-600 text-white"><i class="fas fa-download"></i> Download</button><button onclick="printOutput('examPanel')" class="btn btn-sm bg-gray-100 border"><i class="fas fa-print"></i> Print</button></div></div>
+                <div id="examContent"></div>
+            </div>
+            <div id="markingPanel" class="card p-4 md:p-5 hidden">
+                <div class="flex justify-between items-center mb-3 no-print"><h3 class="font-bold text-sm">Marking Guide</h3><div class="flex gap-2"><button onclick="downloadOutput('marking')" class="btn btn-sm bg-blue-600 text-white"><i class="fas fa-download"></i> Download</button><button onclick="printOutput('markingPanel')" class="btn btn-sm bg-gray-100 border"><i class="fas fa-print"></i> Print</button></div></div>
+                <div id="markingContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = 'https://exams-gen.onrender.com';
+        let selectedTemplate = 'classic';
+        let usedQuestionIds = [];
+        let allSubjects = [];
+        let savedPapers = JSON.parse(localStorage.getItem('cbeSavedPapers') || '[]');
+
+        // All preview samples now have white-space:nowrap on the title
+        const previewSamples = {
+            classic: `<div style="width:100%;margin-bottom:10px;"><h2 style="text-align:center;margin:0;font-size:16pt;font-weight:bold;text-transform:uppercase;white-space:nowrap;">MONITORING LEARNERS PROGRESS</h2><p style="text-align:center;margin:4px 0;font-size:12pt;font-weight:bold;">GRADE 8 – YEAR 2026</p><p style="text-align:center;margin:2px 0;font-size:11pt;font-weight:bold;">Agriculture Grade 8</p><table style="width:100%;margin-top:8px;font-size:10pt;"><tr><td>Name: _______________________</td><td>School: _______________________</td><td>Date: _______________</td></tr></table><p style="text-align:center;margin:4px 0;font-size:9pt;">END TERM EXAMINATION – TERM ONE</p><p style="text-align:center;margin:2px 0;font-size:9pt;">TIME: 1 hr 30 mins  |  TOTAL MARKS: 50</p></div><hr><p style="font-size:8pt;"><strong>SECTION A: 20 MARKS</strong></p><p style="font-size:8pt;">1. Which of the following is correct about soil?<br>A. Overgrazing &nbsp; B. Deforestation &nbsp; C. Poor farming &nbsp; D. Climate change</p>`,
+            modern: `<div style="width:100%;margin-bottom:10px;border-bottom:2px solid #000;padding-bottom:6px;"><h2 style="margin:0;font-size:15pt;font-weight:bold;white-space:nowrap;">MONITORING LEARNERS PROGRESS</h2><div style="display:flex;justify-content:space-between;margin-top:4px;"><span>GRADE 8</span><span>Agriculture Grade 8</span><span>2026</span></div><table style="width:100%;margin-top:6px;font-size:9pt;"><tr><td>Name: _______________________</td><td>Date: _______________</td></tr></table><p style="margin:4px 0;font-size:9pt;">END TERM EXAMINATION – TERM ONE | TIME: 1 hr 30 mins | MARKS: 50</p></div><hr><p style="font-size:8pt;"><strong>SECTION A: 20 MARKS</strong></p><p style="font-size:8pt;">1. Which of the following is correct about soil?<br>A. Overgrazing &nbsp; B. Deforestation &nbsp; C. Poor farming &nbsp; D. Climate change</p>`,
+            framed: `<div style="width:100%;border:3px solid #000;padding:10px;margin-bottom:10px;"><h2 style="text-align:center;margin:0;font-size:16pt;font-weight:bold;text-transform:uppercase;white-space:nowrap;">MONITORING LEARNERS PROGRESS</h2><hr style="margin:6px 0;"/><p style="text-align:center;font-size:11pt;font-weight:bold;">Agriculture Grade 8</p><p style="text-align:center;font-size:10pt;">GRADE 8 – 2026</p><table style="width:100%;margin-top:6px;font-size:9pt;"><tr><td>Name: _______________________</td><td>School: _______________________</td><td>Date: _______________</td></tr></table><p style="text-align:center;font-size:9pt;">END TERM EXAMINATION – TERM ONE | TIME: 1 hr 30 mins | MARKS: 50</p></div><hr><p style="font-size:8pt;"><strong>SECTION A: 20 MARKS</strong></p><p style="font-size:8pt;">1. Which of the following is correct about soil?<br>A. Overgrazing &nbsp; B. Deforestation &nbsp; C. Poor farming &nbsp; D. Climate change</p>`,
+            minimal: `<div style="width:100%;margin-bottom:10px;"><hr style="border:2px solid #000;"/><hr style="border:1px solid #000;margin-top:2px;"/><h2 style="text-align:center;margin:6px 0;font-size:14pt;font-weight:bold;white-space:nowrap;">MONITORING LEARNERS PROGRESS</h2><p style="text-align:center;font-size:11pt;font-weight:bold;">Agriculture Grade 8 – GRADE 8</p><table style="width:100%;margin-top:4px;font-size:9pt;"><tr><td>Name: _______________________</td><td>Date: _______________</td></tr></table><p style="text-align:center;font-size:9pt;">END TERM EXAMINATION – TERM ONE | TIME: 1 hr 30 mins | MARKS: 50</p><hr style="border:1px solid #000;margin-top:4px;"/><hr style="border:2px solid #000;"/></div><hr><p style="font-size:8pt;"><strong>SECTION A: 20 MARKS</strong></p><p style="font-size:8pt;">1. Which of the following is correct about soil?<br>A. Overgrazing &nbsp; B. Deforestation &nbsp; C. Poor farming &nbsp; D. Climate change</p>`,
+            assessment: `<div style="width:100%;text-align:center;border:2px solid #000;padding:10px;margin-bottom:10px;"><p style="margin:0;font-size:12pt;font-weight:bold;text-transform:uppercase;white-space:nowrap;">MONITORING LEARNERS PROGRESS</p><p style="margin:2px 0;font-size:9pt;">SCHOOL BASED ASSESSMENT</p><p style="margin:4px 0;font-size:11pt;font-weight:bold;">Agriculture Grade 8</p><p style="margin:2px 0;font-size:10pt;">GRADE 8 – 2026</p><table style="width:100%;margin-top:5px;font-size:9pt;"><tr><td>Learner's Name: _______________________</td><td>Assessment No: ___________</td><td>Date: _______________</td></tr></table><p style="margin:2px 0;font-size:8pt;">END TERM EXAMINATION – TERM ONE | TIME: 1 hr 30 mins | MARKS: 50</p></div><hr><p style="font-size:8pt;"><strong>SECTION A: 20 MARKS</strong></p><p style="font-size:8pt;">1. Which of the following is correct about soil?<br>A. Overgrazing &nbsp; B. Deforestation &nbsp; C. Poor farming &nbsp; D. Climate change</p>`,
+            professional: `<div style="width:100%;margin-bottom:10px;display:flex;"><div style="width:6px;background:#1a1a1a;margin-right:10px;"></div><div style="flex:1;"><h2 style="font-size:15pt;font-weight:bold;white-space:nowrap;">MONITORING LEARNERS PROGRESS</h2><p style="font-size:11pt;font-weight:bold;">Agriculture Grade 8</p><p>GRADE 8 – 2026 | TIME: 1 hr 30 mins | MARKS: 50</p><table style="width:100%;margin-top:4px;font-size:9pt;"><tr><td>Name: _______________________</td><td>Date: _______________</td></tr></table></div></div><hr><p style="font-size:8pt;"><strong>SECTION A: 20 MARKS</strong></p><p style="font-size:8pt;">1. Which of the following is correct about soil?<br>A. Overgrazing &nbsp; B. Deforestation &nbsp; C. Poor farming &nbsp; D. Climate change</p>`,
+            elegant: `<div style="width:100%;margin-bottom:10px;text-align:center;"><h2 style="font-style:italic;font-size:18pt;font-weight:bold;white-space:nowrap;">MONITORING LEARNERS PROGRESS</h2><hr style="width:40%;border:1px solid #000;margin:4px auto;"><p style="font-size:11pt;font-weight:bold;">Agriculture Grade 8</p><p style="font-size:10pt;">GRADE 8 – 2026</p><table style="width:100%;margin-top:5px;font-size:9pt;"><tr><td>Name: _______________________</td><td>Date: _______________</td></tr></table><p style="font-size:9pt;">END TERM EXAMINATION – TERM ONE | TIME: 1 hr 30 mins | MARKS: 50</p></div><hr><p style="font-size:8pt;"><strong>SECTION A: 20 MARKS</strong></p><p style="font-size:8pt;">1. Which of the following is correct about soil?<br>A. Overgrazing &nbsp; B. Deforestation &nbsp; C. Poor farming &nbsp; D. Climate change</p>`
+        };
+
+        function toggleCheck(checkboxId, toggleId) { const cb = document.getElementById(checkboxId); cb.checked = !cb.checked; document.getElementById(toggleId).classList.toggle('on', cb.checked); }
+        function switchTab(tab) { document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.getElementById(tab + 'Tab').classList.add('active'); document.querySelectorAll('.nav-link').forEach(b => b.classList.remove('active')); const navId = 'nav' + tab.charAt(0).toUpperCase() + tab.slice(1); const navBtn = document.getElementById(navId); if (navBtn) navBtn.classList.add('active'); if (tab === 'topical') refreshTopicalSubjects(); if (tab === 'bulk') refreshBulkTab(); if (tab === 'saved') renderSaved(); if (tab === 'templates') updatePreview(); }
+        document.getElementById('examType').addEventListener('change', function() { document.getElementById('catWrap').style.display = this.value === 'cat' ? 'block' : 'none'; });
+        document.getElementById('bulkExamType').addEventListener('change', function() { document.getElementById('bulkCatWrap').style.display = this.value === 'cat' ? 'block' : 'none'; });
+        function showOutputTab(tab) { const e = document.getElementById('examTabBtn'), m = document.getElementById('markingTabBtn'); if (tab === 'exam') { e.className = 'flex-1 py-2.5 rounded-lg font-semibold text-sm bg-green-600 text-white'; m.className = 'flex-1 py-2.5 rounded-lg font-semibold text-sm bg-gray-200 text-gray-700'; document.getElementById('examPanel').classList.remove('hidden'); document.getElementById('markingPanel').classList.add('hidden'); } else { e.className = 'flex-1 py-2.5 rounded-lg font-semibold text-sm bg-gray-200 text-gray-700'; m.className = 'flex-1 py-2.5 rounded-lg font-semibold text-sm bg-blue-600 text-white'; document.getElementById('examPanel').classList.add('hidden'); document.getElementById('markingPanel').classList.remove('hidden'); } }
+        function selectTemplate(t) { selectedTemplate = t; document.querySelectorAll('.tpl-card').forEach(c => c.classList.remove('sel')); document.querySelector(`[data-template="${t}"]`).classList.add('sel'); updatePreview(); }
+        function updatePreview() { document.getElementById('templatePreview').innerHTML = previewSamples[selectedTemplate] || ''; }
+
+        async function loadAllSubjects() { try { const res = await fetch(`${API}/subjects/`); allSubjects = await res.json(); allSubjects.sort((a,b) => a.name.localeCompare(b.name)); const home = document.getElementById('subjectSelect'); const top = document.getElementById('topicalSubjectSelect'); home.innerHTML = '<option value="">-- Select --</option>'; top.innerHTML = '<option value="">-- Select --</option>'; allSubjects.forEach(s => { home.innerHTML += `<option value="${s.id}">${s.name}</option>`; top.innerHTML += `<option value="${s.id}">${s.name}</option>`; }); } catch(e){ console.error(e); } }
+        document.getElementById('subjectSelect').addEventListener('change', function(){ const sub = allSubjects.find(s => s.id == this.value); if(sub) document.getElementById('gradeInput').value = sub.grade; });
+        document.getElementById('topicalSubjectSelect').addEventListener('change', function(){ const sub = allSubjects.find(s => s.id == this.value); if(sub) document.getElementById('topicalGradeInput').value = sub.grade; loadTopicsForSubject(this.value); });
+        async function loadTopicsForSubject(sid) { const container = document.getElementById('topicalTopicsContainer'); if(!sid){ container.innerHTML='<p class="text-gray-400 text-xs text-center py-4">Select a learning area first</p>'; return; } try { const res = await fetch(`${API}/subjects/${sid}/topics`); const topics = await res.json(); container.innerHTML = topics.length ? topics.map(t => `<label class="flex items-center gap-2 cursor-pointer py-1"><input type="checkbox" value="${t.id}" class="topical-topic-checkbox"><span class="text-xs">${t.name} (${t.question_count} qns)</span></label>`).join('') : '<p class="text-gray-400 text-xs text-center py-4">No topics available</p>'; } catch(e){ console.error(e); } }
+        function refreshTopicalSubjects() { loadAllSubjects(); }
+        document.getElementById('bulkGradeInput').addEventListener('input', function() { const grade = this.value; const container = document.getElementById('bulkSubjects'); if(!grade){ container.innerHTML='<p class="text-gray-400 text-xs text-center py-6">Type a grade to see subjects</p>'; return; } const filtered = allSubjects.filter(s => s.grade == grade); container.innerHTML = filtered.length ? filtered.map(s => `<label class="flex items-center gap-2 cursor-pointer py-1"><input type="checkbox" value="${s.id}" class="bulk-checkbox"><span class="text-xs">${s.name}</span></label>`).join('') : '<p class="text-gray-400 text-xs text-center py-6">No subjects found</p>'; });
+        function refreshBulkTab() { loadAllSubjects(); }
+        function friendlyError(err) { if(!err) return 'Service temporarily unavailable. Please try again later.'; if(typeof err === 'string') return err; if(err.message) return err.message; if(err.detail) return err.detail; return 'Service temporarily unavailable. Please try again later.'; }
+
+        async function generateExam(body, btn, statusEl, saveLabel) {
+            btn.disabled = true; statusEl.innerHTML = '<span class="text-blue-500"><i class="fas fa-spinner fa-spin mr-1"></i> Generating...</span>';
+            const cleanAvoid = usedQuestionIds.filter(id => typeof id === 'number' && !isNaN(id) && id > 0);
+            const cleanBody = { ...body, avoid_question_ids: cleanAvoid };
+            try {
+                const res = await fetch(`${API}/generate-exam`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cleanBody) });
+                const data = await res.json();
+                if (!res.ok) throw new Error(friendlyError(data));
+                data.questions.forEach(q => { if (q.id > 0) usedQuestionIds.push(Number(q.id)); });
+                if (usedQuestionIds.length > 500) usedQuestionIds = usedQuestionIds.slice(-500);
+                document.getElementById('examContent').innerHTML = data.exam_paper;
+                document.getElementById('markingContent').innerHTML = data.marking_scheme || '';
+                document.getElementById('examOutput').classList.remove('hidden');
+                showOutputTab('exam');
+                document.getElementById('examOutput').scrollIntoView({ behavior: 'smooth' });
+                statusEl.innerHTML = `<span class="text-green-600"><i class="fas fa-check-circle mr-1"></i> Ready – ${data.total_marks} marks</span>`;
+                savedPapers.unshift({ subject: saveLabel, date: new Date().toLocaleString(), paper: data.exam_paper, marking: data.marking_scheme });
+                if (savedPapers.length > 30) savedPapers.pop();
+                localStorage.setItem('cbeSavedPapers', JSON.stringify(savedPapers));
+            } catch (err) { statusEl.innerHTML = `<span class="text-red-600"><i class="fas fa-exclamation-circle mr-1"></i> ${friendlyError(err)}</span>`; }
+            finally { btn.disabled = false; }
+        }
+
+        document.getElementById('generateBtn').addEventListener('click', async () => {
+            const sid = document.getElementById('subjectSelect').value; const grade = document.getElementById('gradeInput').value;
+            if (!sid) { document.getElementById('statusMessage').innerHTML = '<span class="text-red-600">Please select a learning area.</span>'; return; }
+            if (!grade) { document.getElementById('statusMessage').innerHTML = '<span class="text-red-600">Please type the grade.</span>'; return; }
+            const examType = document.getElementById('examType').value;
+            const catFormat = examType === 'cat' ? document.getElementById('catFormat').value : 'mixed';
+            await generateExam({
+                subject_id: parseInt(sid), term: parseInt(document.getElementById('termSelect').value), exam_type: examType,
+                cat_number: examType === 'cat' ? parseInt(document.getElementById('catNumber').value) : null,
+                template: selectedTemplate, school_name: document.getElementById('schoolName').value || '',
+                total_marks: parseInt(document.getElementById('totalMarks').value) || 50,
+                mcq_marks: 1, structured_marks_min: 2, structured_marks_max: 8,
+                duration_hours: parseInt(document.getElementById('durationHours').value) || 1,
+                duration_minutes: parseInt(document.getElementById('durationMinutes').value) || 30,
+                include_marking_scheme: true, include_images: document.getElementById('includeImages').checked,
+                cross_grade: document.getElementById('crossGrade').checked,
+                question_format: examType === 'cat' ? catFormat : 'mixed'
+            }, document.getElementById('generateBtn'), document.getElementById('statusMessage'), document.getElementById('subjectSelect').selectedOptions[0]?.text || 'Assessment');
+        });
+
+        document.getElementById('topicalGenerateBtn').addEventListener('click', async () => {
+            const sid = document.getElementById('topicalSubjectSelect').value; const grade = document.getElementById('topicalGradeInput').value;
+            if (!sid) { document.getElementById('topicalStatusMessage').innerHTML = '<span class="text-red-600">Please select a learning area.</span>'; return; }
+            if (!grade) { document.getElementById('topicalStatusMessage').innerHTML = '<span class="text-red-600">Please type the grade.</span>'; return; }
+            const topics = Array.from(document.querySelectorAll('.topical-topic-checkbox:checked')).map(cb => parseInt(cb.value));
+            if (!topics.length) { document.getElementById('topicalStatusMessage').innerHTML = '<span class="text-red-600">Select at least one topic.</span>'; return; }
+            await generateExam({
+                subject_id: parseInt(sid), term: parseInt(document.getElementById('topicalTermSelect').value), exam_type: 'topical', topic_ids: topics,
+                template: selectedTemplate, school_name: document.getElementById('topicalSchoolName').value || '',
+                total_marks: parseInt(document.getElementById('topicalTotalMarks').value) || 50,
+                mcq_marks: 1, structured_marks_min: 2, structured_marks_max: 8,
+                duration_hours: 1, duration_minutes: 30, include_marking_scheme: true,
+                include_images: document.getElementById('topicalIncludeImages').checked, cross_grade: false, question_format: 'mixed'
+            }, document.getElementById('topicalGenerateBtn'), document.getElementById('topicalStatusMessage'), 'Topical: ' + (document.getElementById('topicalSubjectSelect').selectedOptions[0]?.text || ''));
+        });
+
+        document.getElementById('bulkGenerateBtn').addEventListener('click', async () => {
+            const selected = Array.from(document.querySelectorAll('.bulk-checkbox:checked')).map(cb => cb.value);
+            if (!selected.length) { document.getElementById('bulkStatus').innerHTML = '<span class="text-red-600 text-xs">Select at least one subject.</span>'; return; }
+            const term = parseInt(document.getElementById('bulkTerm').value); const examType = document.getElementById('bulkExamType').value;
+            const catNum = examType === 'cat' ? parseInt(document.getElementById('bulkCatNumber').value) : null;
+            document.getElementById('bulkStatus').innerHTML = '<span class="text-blue-500 text-xs"><i class="fas fa-spinner fa-spin mr-1"></i> Generating papers...</span>'; let done = 0;
+            for (const sid of selected) {
+                try {
+                    const body = { subject_id: parseInt(sid), term, exam_type: examType, cat_number: catNum, template: selectedTemplate, school_name: '', total_marks: 50, mcq_marks: 1, structured_marks_min: 2, structured_marks_max: 8, duration_hours: 1, duration_minutes: 30, include_marking_scheme: true, include_images: true, cross_grade: true, question_format: 'mixed', avoid_question_ids: [] };
+                    const res = await fetch(`${API}/generate-exam`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                    const data = await res.json(); if (res.ok) { done++; savedPapers.unshift({ subject: data.questions[0]?.text?.substring(0,40) || 'Assessment', date: new Date().toLocaleString(), paper: data.exam_paper, marking: data.marking_scheme }); if (savedPapers.length > 30) savedPapers.pop(); }
+                } catch(e) { console.error(e); }
+            }
+            localStorage.setItem('cbeSavedPapers', JSON.stringify(savedPapers)); document.getElementById('bulkStatus').innerHTML = `<span class="text-green-600 text-xs"><i class="fas fa-check-circle mr-1"></i> Complete: ${done}/${selected.length} papers.</span>`;
+        });
+
+        function renderSaved() { const container = document.getElementById('savedPapers'); if (!savedPapers.length) { container.innerHTML = '<p class="text-gray-400 text-sm text-center py-6">No saved papers yet.</p>'; return; } container.innerHTML = savedPapers.map((p, i) => `<div class="flex justify-between items-center py-3 border-b border-gray-100"><div><p class="font-medium text-sm">${p.subject}</p><p class="text-xs text-gray-400">${p.date}</p></div><div class="flex gap-1"><button onclick="viewSaved(${i})" class="text-green-600 text-xs px-2 py-1 border border-green-200 rounded hover:bg-green-50">View</button><button onclick="downloadSaved(${i})" class="text-blue-600 text-xs px-2 py-1 border border-blue-200 rounded hover:bg-blue-50">DL</button><button onclick="deleteSaved(${i})" class="text-red-500 text-xs px-2 py-1 border border-red-200 rounded hover:bg-red-50">Del</button></div></div>`).join(''); }
+        function viewSaved(i) { const p = savedPapers[i]; document.getElementById('examContent').innerHTML = p.paper; document.getElementById('markingContent').innerHTML = p.marking || ''; document.getElementById('examOutput').classList.remove('hidden'); showOutputTab('exam'); document.getElementById('examOutput').scrollIntoView({ behavior: 'smooth' }); }
+        function downloadSaved(i) { const p = savedPapers[i]; const blob = new Blob([`<html><body style="font-family:'Times New Roman',serif;padding:15px;">${p.paper}</body></html>`], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `saved_paper_${i+1}.html`; a.click(); }
+        function deleteSaved(i) { savedPapers.splice(i,1); localStorage.setItem('cbeSavedPapers', JSON.stringify(savedPapers)); renderSaved(); }
+        function clearAllSaved() { if (confirm('Delete all saved papers?')) { savedPapers = []; localStorage.removeItem('cbeSavedPapers'); renderSaved(); } }
+
+        function printOutput(panelId) { const content = document.getElementById(panelId).querySelector('#examContent, #markingContent')?.innerHTML || ''; const w = window.open('', '_blank'); w.document.write(`<html><head><style>body{font-family:'Times New Roman',serif;padding:15px;}@media print{body{margin:0;}}</style></head><body>${content}</body></html>`); w.document.close(); w.focus(); setTimeout(() => w.print(), 400); }
+        function downloadOutput(type) { const content = type === 'exam' ? document.getElementById('examContent').innerHTML : document.getElementById('markingContent').innerHTML; const blob = new Blob([`<html><body style="font-family:'Times New Roman',serif;padding:15px;">${content}</body></html>`], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `assessment_${type}_${new Date().toISOString().slice(0,10)}.html`; a.click(); }
+
+        (function init() { loadAllSubjects(); renderSaved(); })();
+    </script>
+</body>
+  </html>
