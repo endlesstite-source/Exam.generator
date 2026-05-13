@@ -458,14 +458,12 @@ class MainActivity : AppCompatActivity() {
     private fun createSavedTab(): View {
         val rv = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = SavedAdapter(savedPapers) { paper, action ->
-                when (action) {
-                    "view" -> showExamDialog(paper.paper, paper.marking ?: "")
-                    "delete" -> {
-                        savedPapers.remove(paper); savePapers(); adapter?.notifyDataSetChanged()
-                    }
+            adapter = SavedAdapter(savedPapers,
+                onView = { paper -> showExamDialog(paper.paper, paper.marking ?: "") },
+                onDelete = { paper ->
+                    savedPapers.remove(paper); savePapers(); adapter?.notifyDataSetChanged()
                 }
-            }
+            )
         }
         return rv
     }
@@ -562,4 +560,51 @@ class MainActivity : AppCompatActivity() {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         spinner.adapter = adapter
     }
+}
+
+// ==================== SAVED ADAPTER ====================
+class SavedAdapter(
+    private val list: List<SavedPaper>,
+    private val onView: (SavedPaper) -> Unit,
+    private val onDelete: (SavedPaper) -> Unit
+) : RecyclerView.Adapter<SavedAdapter.ViewHolder>() {
+
+    class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        val row = LinearLayout(parent.context).apply {
+            orientation = LinearLayout.HORIZONTAL; setPadding(16, 12, 16, 12); gravity = Gravity.CENTER_VERTICAL
+        }
+        val info = LinearLayout(parent.context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val title = TextView(parent.context).apply {
+            textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        val date = TextView(parent.context).apply {
+            textSize = 12f; setTextColor(0xFF666666.toInt())
+        }
+        info.addView(title); info.addView(date); row.addView(info)
+
+        row.addView(Button(parent.context).apply {
+            text = "View"; setBackgroundColor(0xFF16A34A.toInt()); setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
+        })
+        row.addView(Button(parent.context).apply {
+            text = "Del"; setBackgroundColor(0xFFEF4444.toInt()); setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
+        })
+        return ViewHolder(row)
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        val paper = list[position]
+        val row = holder.itemView as LinearLayout
+        val info = row.getChildAt(0) as LinearLayout
+        (info.getChildAt(0) as TextView).text = paper.subject
+        (info.getChildAt(1) as TextView).text = paper.date
+        (row.getChildAt(1) as Button).setOnClickListener { onView(paper) }
+        (row.getChildAt(2) as Button).setOnClickListener { onDelete(paper) }
+    }
+
+    override fun getItemCount() = list.size
 }
